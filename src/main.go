@@ -3,59 +3,45 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/http"
 
-	"github.com/gorilla/mux"
-	"github.com/manishchauhan/dugguGo/util/tree"
+	"github.com/manishchauhan/dugguGo/util/mysqlDbManager"
 )
 
-// Handler for the home route.
-func homeHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Welcome to the Home Page!")
+func normalDb() {
+
+	dataSourceName := "root:manish@tcp(127.0.0.1:3306)/dugguGo"
+
+	// Get the DBManager instance
+	db, err := mysqlDbManager.GetInstance(dataSourceName)
+	if err != nil {
+		fmt.Println("Error creating DBManager:", err)
+		return
+	}
+	defer db.Close()
+
+	// Example query
+	rows, err := db.Query("SELECT * FROM register")
+	if err != nil {
+		fmt.Println("Error executing query:", err)
+		return
+	}
+	defer rows.Close()
+
+	// Process the rows...
+
+	var id int
+	var username string
+	var password string
+	var email string
+	for rows.Next() {
+		if err := rows.Scan(&id, &username, &password, &email); err != nil {
+			log.Println("Error scanning row:", err)
+			continue
+		}
+		fmt.Printf("Name %s\n", username)
+	}
+
 }
-
-// Handler for the about route.
-func aboutHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "About Page")
-}
-
-// Handler for the contact route.
-func contactHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Contact Page")
-}
-func resolveTree() {
-
-	t := tree.Tree{}
-
-	t.Insert(50)
-	t.Insert(30)
-	t.Insert(20)
-	t.Insert(40)
-	t.Insert(70)
-	t.Insert(60)
-	t.Insert(80)
-
-	t.InOrderTraversal()
-}
-
 func main() {
-
-	router := mux.NewRouter()
-
-	// Define routes and their respective handlers.
-	router.HandleFunc("/", homeHandler).Methods("GET")
-	router.HandleFunc("/about", aboutHandler).Methods("GET")
-	router.HandleFunc("/contact", contactHandler).Methods("GET")
-
-	// Create a server and set the router as its handler.
-	server := &http.Server{
-		Addr:    ":8080",
-		Handler: router,
-	}
-
-	// Start the server.
-	log.Println("Server listening on http://localhost:8080")
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("Server error: %v", err)
-	}
+	normalDb()
 }
