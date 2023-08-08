@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/joho/godotenv"
+	"github.com/manishchauhan/dugguGo/util/auth/jwtAuth"
 	"github.com/manishchauhan/dugguGo/util/mysqlDbManager"
 )
 
-func normalDb() {
+// testing only get data----------------------------------------------------------------
+func getData() {
 
 	dataSourceName := "root:manish@tcp(127.0.0.1:3306)/dugguGo"
 
@@ -42,6 +45,27 @@ func normalDb() {
 	}
 
 }
+func writeData() {
+
+}
+func updateData() {
+
+}
+func deleteData() {
+
+}
+
+// testing only get data----------------------------------------------------------------
 func main() {
-	normalDb()
+	//load env variables first
+	// Load environment variables from .env file
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+	jwtAuth.SetEnvData()
+	getData()
+	writeData()
+	updateData()
+	deleteData()
 }
