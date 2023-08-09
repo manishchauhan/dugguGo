@@ -115,7 +115,10 @@ func (dm *STDBManager) ExecuteDeleteWithWhere(tableName string, conditions strin
 
 // note by manish chauhan :- use this function to update data (single record or multi-record)
 func (dm *STDBManager) ExecuteDelete(query string, args ...interface{}) (int64, error) {
+	return dm.ExecuterowsAffected(query, args...)
+}
 
+func (dm *STDBManager) ExecuterowsAffected(query string, args ...interface{}) (int64, error) {
 	result, err := dm.Execute(query, args...)
 	if err != nil {
 		return 0, err
@@ -125,14 +128,56 @@ func (dm *STDBManager) ExecuteDelete(query string, args ...interface{}) (int64, 
 	if err != nil {
 		return 0, err
 	}
-
 	return rowsAffected, nil
-
 }
 
-// note by manish chauhan :- use this function to update data (single record or multi-record)
-func (dm *STDBManager) ExecuteUpdate(tableName string, args ...interface{}) {
+/*// Example usage to update a single record based on a WHERE clause in "users" table
+conditions := "id = ?"
+args := []interface{}{1}
+columnsToUpdate := map[string]interface{}{"name": "Updated Name"}
+rowsAffected, err := dbManager.ExecuteUpdateWithWhere("users", columnsToUpdate, conditions, args...)
+if err != nil {
+	log.Fatal(err)
+}
 
+fmt.Printf("%d rows updated.\n", rowsAffected)
+
+// Example usage to update multiple records based on a WHERE clause in "users" table
+multipleConditions := "name LIKE ?"
+multipleArgs := []interface{}{"John%"}
+multipleColumnsToUpdate := map[string]interface{}{"name": "New Name"}
+multipleRowsAffected, err := dbManager.ExecuteUpdateWithWhere("users", multipleColumnsToUpdate, multipleConditions, multipleArgs...)
+if err != nil {
+	log.Fatal(err)
+}*/
+// note by manish chauhan :- use this function to update data (single record or multi-record)
+func (dm *STDBManager) ExecuteUpdateWithWhere(tableName string, columns map[string]interface{}, conditions string, args ...interface{}) (int64, error) {
+	if conditions == "" {
+		return 0, fmt.Errorf("conditions cannot be empty")
+	}
+
+	setClauses := make([]string, 0, len(columns))
+	setArgs := make([]interface{}, 0, len(columns))
+
+	for column, value := range columns {
+		setClauses = append(setClauses, fmt.Sprintf("%s = ?", column))
+		setArgs = append(setArgs, value)
+	}
+
+	setClause := strings.Join(setClauses, ", ")
+	whereClause := conditions
+	allArgs := append(setArgs, args...)
+
+	query := fmt.Sprintf("UPDATE `%s` SET %s WHERE %s", tableName, setClause, whereClause)
+	return dm.ExecuterowsAffected(query, allArgs...)
+}
+func placeholderForValue(value interface{}) string {
+	switch value.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return "?"
+	default:
+		return "?"
+	}
 }
 
 // note by manish chauhan :- use this function to insert data
@@ -194,4 +239,37 @@ func extractFieldValues(data interface{}) []interface{} {
 	}
 
 	return fieldValues
+}
+func (dm *STDBManager) ExecuteMultiInsert(tableName string, inserts []map[string]interface{}) (int64, error) {
+	if len(inserts) == 0 {
+		return 0, fmt.Errorf("no records to insert")
+	}
+
+	columns := make([]string, 0, len(inserts[0]))
+	valuesPlaceholders := make([]string, 0)
+	valuesArgs := make([]interface{}, 0, len(inserts)*len(columns))
+
+	// Extract column names and initialize placeholders
+	for column := range inserts[0] {
+		columns = append(columns, column)
+	}
+
+	// Iterate through each record and build placeholders and values
+	for _, record := range inserts {
+		recordPlaceholders := make([]string, 0, len(columns))
+		for _, columnName := range columns {
+			value, ok := record[columnName]
+			if !ok {
+				return 0, fmt.Errorf("missing value for column %s", columnName)
+			}
+			recordPlaceholders = append(recordPlaceholders, "?")
+			valuesArgs = append(valuesArgs, value)
+		}
+		valuesPlaceholders = append(valuesPlaceholders, "("+strings.Join(recordPlaceholders, ", ")+")")
+	}
+	// Construct the SQL query
+	query := fmt.Sprintf("INSERT INTO `%s` (%s) VALUES %s", tableName, strings.Join(columns, ", "), strings.Join(valuesPlaceholders, ", "))
+	// Execute the query
+	return dm.ExecuterowsAffected(query, valuesArgs...)
+
 }

@@ -81,7 +81,19 @@ func writeData() {
 	fmt.Println("Last Inserted ID:", lastInsertID)
 }
 func updateData() {
+	// Example usage to update a single record based on a WHERE clause in "users" table
+	conditions := "id IN (?, ?, ?)"
+	args := []interface{}{1, 2, 3}
+	columnsToUpdate := map[string]interface{}{
+		"email": "manish1457@yahoo.com",
+	}
 
+	rowsAffected, err := db.ExecuteUpdateWithWhere("register", columnsToUpdate, conditions, args...)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("%d rows updated.\n", rowsAffected)
 }
 func deleteData() {
 
@@ -92,6 +104,39 @@ func deleteData() {
 	}
 
 	fmt.Printf("%d rows deleted.\n", rowsAffected)
+}
+func insertMulti() {
+	// Example usage to insert multiple records with varying column values
+	rand.Seed(time.Now().UnixNano())
+	randomNumber := rand.Intn(1000)
+
+	inserts := []map[string]interface{}{
+		{
+			"id":       8,
+			"username": "John Doe" + fmt.Sprintf("%d", randomNumber),
+			"password": "akuma" + fmt.Sprintf("%d", randomNumber),
+			"email":    "john@example.com",
+		},
+		{
+			"id":       9,
+			"username": "John Doe" + fmt.Sprintf("%d", randomNumber),
+			"password": "akuma" + fmt.Sprintf("%d", randomNumber),
+			"email":    "john@example.com",
+		},
+		{
+			"id":       10,
+			"username": "John Doe" + fmt.Sprintf("%d", randomNumber),
+			"password": "akuma" + fmt.Sprintf("%d", randomNumber),
+			"email":    "john@example.com",
+		},
+	}
+
+	rowsAffected, err := db.ExecuteMultiInsert("register", inserts)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("%d rows inserted.\n", rowsAffected)
 }
 
 // testing only get data----------------------------------------------------------------
@@ -114,11 +159,14 @@ func main() {
 		fmt.Println("Error creating DBManager:", err)
 		return
 	}
-	//deleteData()
-	//updateData()
+	//	deleteData()
+	//
 	//writeData()
-	getData()
-	writeData()
+	//getData()
+	//writeData()
+	//updateData()
+	//getData()
+	insertMulti()
 	getData()
 	//
 	defer db.Close()
