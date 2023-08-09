@@ -80,6 +80,7 @@ func (dm *STDBManager) Query(query string, args ...interface{}) (*sql.Rows, erro
 	return db.Query(query, args...)
 }
 
+// Begin starts a transaction. The default isolation level is dependent on the driver.
 func (dm *STDBManager) Begin() (*sql.Tx, error) {
 	db, err := dm.GetConnection()
 	if err != nil {
@@ -88,6 +89,53 @@ func (dm *STDBManager) Begin() (*sql.Tx, error) {
 	return db.Begin()
 }
 
+// note by manish chauhan :- delete all record from a table
+func (dbManager *STDBManager) ExecuteDeleteAll(tableName string) (int64, error) {
+	query := fmt.Sprintf("DELETE FROM `%s`", tableName) // Properly escape table name
+	return dbManager.ExecuteDelete(query)
+}
+
+/*
+	Example usage to delete records based on flexible WHERE clauses from "any" table
+	conditions := "id IN (?, ?, ?) AND name LIKE ?"
+	idsToDelete := []interface{}{1, 2, 3}
+	likePattern := "John%"
+	args := append(idsToDelete, likePattern)
+	rowsAffected, err := dm.ExecuteDeleteWithWhere("users", conditions, args...)
+*/
+
+func (dm *STDBManager) ExecuteDeleteWithWhere(tableName string, conditions string, args ...interface{}) (int64, error) {
+	if conditions == "" {
+		return 0, fmt.Errorf("conditions cannot be empty")
+	}
+
+	query := fmt.Sprintf("DELETE FROM `%s` WHERE %s", tableName, conditions)
+	return dm.ExecuteDelete(query, args...)
+}
+
+// note by manish chauhan :- use this function to update data (single record or multi-record)
+func (dm *STDBManager) ExecuteDelete(query string, args ...interface{}) (int64, error) {
+
+	result, err := dm.Execute(query, args...)
+	if err != nil {
+		return 0, err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	return rowsAffected, nil
+
+}
+
+// note by manish chauhan :- use this function to update data (single record or multi-record)
+func (dm *STDBManager) ExecuteUpdate(tableName string, args ...interface{}) {
+
+}
+
+// note by manish chauhan :- use this function to insert data
 // ExecuteInsert inserts data into the specified table and returns the last inserted ID.
 func (dm *STDBManager) ExecuteInsert(tableName string, data interface{}) (int64, error) {
 	// Build the SQL query for the INSERT statement
@@ -123,7 +171,6 @@ func (dm *STDBManager) ExecuteInsert(tableName string, data interface{}) (int64,
 func buildInsertQuery(tableName string, data interface{}) string {
 	var valueFields, valuePlaceholders []string
 	values := reflect.ValueOf(data).Elem()
-	fmt.Println("----->", values.NumField())
 	// Iterate over struct fields to build the list of fields and placeholders
 	for i := 0; i < values.NumField(); i++ {
 		fieldName := values.Type().Field(i).Name

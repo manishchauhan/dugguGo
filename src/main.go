@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/manishchauhan/dugguGo/util/auth/jwtAuth"
@@ -40,7 +42,7 @@ func getData() {
 			continue
 		}
 		rowSize += 1
-		fmt.Printf("Name %s\n", username)
+		fmt.Printf("Name %s %s %s\n", username, password, email)
 	}
 
 }
@@ -55,10 +57,14 @@ type User struct {
 func writeData() {
 
 	// Define the data you want to insert
+	rand.Seed(time.Now().UnixNano())
+	randomNumber := rand.Intn(1000)
+	fmt.Println(rowSize)
+
 	userData := &User{
 		Id:       rowSize,
-		Username: "akuma",
-		Password: "akumakapassword",
+		Username: "akuma" + fmt.Sprintf("%d", randomNumber),
+		Password: "akuma" + fmt.Sprintf("%d", randomNumber),
 		Email:    "new@example.com",
 	}
 
@@ -79,6 +85,13 @@ func updateData() {
 }
 func deleteData() {
 
+	//query := "DELETE FROM register WHERE username = ?"
+	rowsAffected, err := db.ExecuteDeleteAll("register")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("%d rows deleted.\n", rowsAffected)
 }
 
 // testing only get data----------------------------------------------------------------
@@ -101,10 +114,13 @@ func main() {
 		fmt.Println("Error creating DBManager:", err)
 		return
 	}
+	//deleteData()
+	//updateData()
+	//writeData()
 	getData()
 	writeData()
-
-	updateData()
-	deleteData()
+	getData()
+	//
 	defer db.Close()
+
 }
