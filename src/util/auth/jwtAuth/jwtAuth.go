@@ -2,7 +2,6 @@ package jwtAuth
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -31,13 +30,15 @@ type CustomClaims struct {
 	jwt.StandardClaims
 }
 
+// This function should be called after the .env file has been loaded.
 func SetEnvData() {
 	jwtSecret = []byte(os.Getenv(
 		"ACCESS_TOKEN_SECRET",
-	)) // Replace with your actual secret key
-	fmt.Println("jwt token is", jwtSecret)
+	))
 }
 
+// Each route should contain this middle which would confrim that user need to be authenticated or
+// not based on jwt toekn
 // AuthMiddleware is a middleware to authenticate and authorize requests using JWT.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
