@@ -113,19 +113,19 @@ func insertMulti() {
 
 	inserts := []map[string]interface{}{
 		{
-			"id":       8,
+			"id":       randomNumber + 1,
 			"username": "John Doe" + fmt.Sprintf("%d", randomNumber),
 			"password": "akuma" + fmt.Sprintf("%d", randomNumber),
 			"email":    "john@example.com",
 		},
 		{
-			"id":       9,
+			"id":       randomNumber + 2,
 			"username": "John Doe" + fmt.Sprintf("%d", randomNumber),
 			"password": "akuma" + fmt.Sprintf("%d", randomNumber),
 			"email":    "john@example.com",
 		},
 		{
-			"id":       10,
+			"id":       randomNumber + 3,
 			"username": "John Doe" + fmt.Sprintf("%d", randomNumber),
 			"password": "akuma" + fmt.Sprintf("%d", randomNumber),
 			"email":    "john@example.com",
@@ -167,7 +167,7 @@ func main() {
 	//writeData()
 	//updateData()
 	//getData()
-	//	insertMulti()
+	insertMulti()
 	//getData()
 	//
 	//deleteData()
