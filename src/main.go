@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/manishchauhan/dugguGo/servers/mysqlhttpserver"
 	"github.com/manishchauhan/dugguGo/util/auth/jwtAuth"
 	"github.com/manishchauhan/dugguGo/util/mysqlDbManager"
 )
 
 var (
-	db      *mysqlDbManager.STDBManager
+	db      *mysqlDbManager.DBManager
 	rowSize int = 0
 	err     error
 )
@@ -154,7 +155,7 @@ func main() {
 	dataSourceName := os.Getenv("DATABASE_KEY")
 
 	// Get the DBManager instance
-	db, err = mysqlDbManager.GetInstance(dataSourceName)
+	db, err = mysqlDbManager.NewDBManager(dataSourceName)
 	if err != nil {
 		fmt.Println("Error creating DBManager:", err)
 		return
@@ -166,9 +167,13 @@ func main() {
 	//writeData()
 	//updateData()
 	//getData()
-	insertMulti()
-	getData()
+	//	insertMulti()
+	//getData()
 	//
+	//deleteData()
+	//getData()
+	//
+	port := ":8080"
+	mysqlhttpserver.StartServer(port, db)
 	defer db.Close()
-
 }
