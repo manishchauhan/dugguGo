@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/manishchauhan/dugguGo/servers/mysqlhttpserver"
 	"github.com/manishchauhan/dugguGo/util/auth/jwtAuth"
 	"github.com/manishchauhan/dugguGo/util/mysqlDbManager"
 )
@@ -167,8 +168,12 @@ func main() {
 	//updateData()
 	//getData()
 	//	insertMulti()
-	getData()
+	//getData()
 	//
+	//deleteData()
+	//getData()
+	//
+	port := ":8080"
+	mysqlhttpserver.StartServer(port, db)
 	defer db.Close()
-
 }
