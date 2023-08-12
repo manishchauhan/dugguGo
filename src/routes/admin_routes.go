@@ -8,7 +8,7 @@ import (
 	"github.com/manishchauhan/dugguGo/util/mysqlDbManager"
 )
 
-func RegisterAdminRoutes(router *mux.Router, db *mysqlDbManager.DBManager) {
+func RegisterAdminRoutes(router *mux.Router, dm *mysqlDbManager.DBManager) {
 	subrouter := router.PathPrefix("/admin").Subrouter()
 	subrouter.HandleFunc("/login", handleUserLogin).Methods("POST")
 	subrouter.HandleFunc("/logout", handleUserLogout).Methods("POST")

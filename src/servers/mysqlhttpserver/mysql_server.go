@@ -11,9 +11,9 @@ import (
 	"github.com/manishchauhan/dugguGo/util/mysqlDbManager"
 )
 
-func StartServer(port string, db *mysqlDbManager.DBManager) {
+func StartServer(port string, dm *mysqlDbManager.DBManager) {
 	rootRouter := mux.NewRouter()
-	routes.RegisterRoutes(rootRouter, db)
+	routes.RegisterRoutes(rootRouter, dm)
 
 	http.Handle("/", rootRouter)
 	// Add a route for the home page

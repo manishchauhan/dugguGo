@@ -5,7 +5,7 @@ import (
 	"github.com/manishchauhan/dugguGo/util/mysqlDbManager"
 )
 
-func RegisterRoutes(r *mux.Router, db *mysqlDbManager.DBManager) {
-	RegisterUserRoutes(r, db)
-	RegisterAdminRoutes(r, db)
+func RegisterRoutes(r *mux.Router, dm *mysqlDbManager.DBManager) {
+	RegisterUserRoutes(r, dm)
+	RegisterAdminRoutes(r, dm)
 }
