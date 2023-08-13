@@ -5,12 +5,15 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/manishchauhan/dugguGo/servers/mysqlhttpserver"
 	"github.com/manishchauhan/dugguGo/util/auth/jwtAuth"
 	"github.com/manishchauhan/dugguGo/util/mysqlDbManager"
+	"github.com/manishchauhan/dugguGo/websocket"
 )
 
 var (
@@ -132,7 +135,7 @@ func insertMulti() {
 		},
 	}
 
-	rowsAffected, err := db.ExecuteMultiInsert("register", inserts)
+	rowsAffected, err := db.ExecuteMultiInsert("admin", inserts)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -160,6 +163,7 @@ func main() {
 		fmt.Println("Error creating DBManager:", err)
 		return
 	}
+	defer db.Close()
 	//	deleteData()
 	//
 	//writeData()
@@ -167,13 +171,37 @@ func main() {
 	//writeData()
 	//updateData()
 	//getData()
-	insertMulti()
 	//getData()
 	//
 	//deleteData()
 	//getData()
 	//
 	port := ":8080"
-	mysqlhttpserver.StartServer(port, db)
-	defer db.Close()
+	go func() {
+
+		mysqlhttpserver.StartServer(port, db)
+
+	}()
+
+	//connect web socket
+	serverAddr := ":9000" // or any other desired address
+
+	server := websocket.NewWebSocketServer(serverAddr)
+
+	go func() {
+		fmt.Println("Starting")
+		if err := server.Start(); err != nil {
+			fmt.Printf("WebSocket server error: %v\n", err)
+		}
+	}()
+
+	// Graceful shutdown handling
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	<-c
+
+	fmt.Println("Shutting down...")
+	// Perform cleanup and shutdown operations if needed
+
+	os.Exit(0)
 }
