@@ -184,7 +184,7 @@ func main() {
 	}()
 
 	//connect web socket
-	serverAddr := ":9000" // or any other desired address
+	serverAddr := ":3001" // or any other desired address
 
 	server := websocket.NewWebSocketServer(serverAddr)
 
