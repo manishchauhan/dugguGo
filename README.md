@@ -1,7 +1,7 @@
 Task to be done (Month1)
-  1. Mysql connection pool (reusability)
-  2. CRUD operation  (reusability)
-  3. JWT authentication + third party authentication like facebook and google  (reusability)
+  1. Mysql connection pool (reusability) done
+  2. CRUD operation  (reusability) done
+  3. JWT authentication + third party authentication like facebook and google  (reusability) work in progress
   4. Redis implementation  (reusability)
   5. Mongodb and Cassandra   (reusability)
   6. API testing point dummy (no reusability)
