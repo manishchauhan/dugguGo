@@ -36,8 +36,10 @@ type IFMessage struct {
 }
 
 type WebSocketServer struct {
-	upgrader websocket.Upgrader
-	addr     string
+	upgrader      websocket.Upgrader
+	addr          string
+	connections   map[*websocket.Conn]bool
+	connectionsMu sync.Mutex
 }
 
 func NewWebSocketServer(addr string) *WebSocketServer {
@@ -49,8 +51,9 @@ func NewWebSocketServer(addr string) *WebSocketServer {
 		},
 	}
 	return &WebSocketServer{
-		upgrader: upgrader,
-		addr:     addr,
+		upgrader:    upgrader,
+		addr:        addr,
+		connections: make(map[*websocket.Conn]bool),
 	}
 }
 
@@ -69,7 +72,18 @@ func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request
 		sendErrorMessage(conn, "Error upgrading connection")
 		return
 	}
-	defer conn.Close()
+	//remove connection when user disconnect it
+	defer func() {
+		s.connectionsMu.Lock()
+		delete(s.connections, conn)
+		s.connectionsMu.Unlock()
+		conn.Close()
+	}()
+
+	// Lock the mutex while adding the connection
+	s.connectionsMu.Lock()
+	s.connections[conn] = true
+	s.connectionsMu.Unlock()
 
 	// Send welcome message to client
 	err = sendMessageToClient(conn, "Welcome to the Chat Center")
@@ -88,7 +102,7 @@ func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request
 	wgOutgoing.Add(1)
 
 	go s.handleIncoming(&wgIncoming, conn, incomingMessages, outgoingMessages)
-	go s.handleOutgoing(&wgOutgoing, conn, outgoingMessages)
+	go s.handleOutgoing(&wgOutgoing, outgoingMessages)
 
 	wgIncoming.Wait()
 	wgOutgoing.Wait()
@@ -118,14 +132,19 @@ func (s *WebSocketServer) handleIncoming(wg *sync.WaitGroup, conn *websocket.Con
 	}
 }
 
-func (s *WebSocketServer) handleOutgoing(wg *sync.WaitGroup, conn *websocket.Conn, outgoingMessages <-chan []byte) {
+func (s *WebSocketServer) handleOutgoing(wg *sync.WaitGroup, outgoingMessages <-chan []byte) {
 	defer wg.Done()
 	for msg := range outgoingMessages {
-		err := sendMessageToClient(conn, string(msg))
-		if err != nil {
-			fmt.Println("Error sending message:", err)
-			return
+		// Lock the mutex while iterating through the connections map
+		s.connectionsMu.Lock()
+		for conn := range s.connections {
+			err := sendMessageToClient(conn, string(msg))
+			if err != nil {
+				fmt.Println("Error sending message:", err)
+				// Optionally, you might want to remove the connection from the map here
+			}
 		}
+		s.connectionsMu.Unlock()
 	}
 }
 
