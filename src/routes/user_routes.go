@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -19,19 +20,50 @@ func RegisterUserRoutes(router *mux.Router, dm *mysqlDbManager.DBManager) {
 	subrouter.HandleFunc("/logout", handleUserLogout).Methods("POST")
 	subrouter.HandleFunc("/favorite-games", fetchFavoriteGames).Methods("GET")
 	subrouter.HandleFunc("/rooms", fetchRoomList).Methods("GET")
-	subrouter.HandleFunc("/userlist", fetchAllUsers(dm)).Methods("GET")
+	//subrouter.HandleFunc("/userlist", fetchAllUsers(dm)).Methods("GET")
+	subrouter.HandleFunc("/register", registerUser(dm)).Methods("POST")
 }
 
+// register user
+func registerUser(dm *mysqlDbManager.DBManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			errorhandler.SendErrorResponse(w, http.StatusMethodNotAllowed, jsonResponse.Methodnotallowed)
+			return
+		}
+
+		var user userModel.IFUser
+		decoder := json.NewDecoder(r.Body)
+		if err := decoder.Decode(&user); err != nil {
+			errorhandler.SendErrorResponse(w, http.StatusBadRequest, jsonResponse.Errordecoding+err.Error())
+			return
+		}
+		defer r.Body.Close()
+		// Specify the table name
+		tableName := "user"
+		// Insert the data into the table
+		_, err := dm.ExecuteInsert(tableName, &user)
+		if err != nil {
+			errorhandler.SendErrorResponse(w, http.StatusInternalServerError, jsonResponse.DBinsertError+err.Error())
+			return
+		}
+		// send back response if everything was successful
+		jsonResponse.SendJSONResponse(w, http.StatusOK, jsonResponse.UserRegistered)
+	}
+
+}
 func handleUserLogin(w http.ResponseWriter, r *http.Request) {
 	// Authentication logic
 	fmt.Fprintln(w, "User Login")
 	return
 }
+
+/*
 func fetchAllUsers(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := dm.Query("SELECT id,username,email FROM register")
 		if err != nil {
-			errorhandler.HandleDatabaseError(w, err)
+
 			return
 		}
 		defer rows.Close()
@@ -41,23 +73,23 @@ func fetchAllUsers(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 		for rows.Next() {
 			var register userModel.IFUser
 			if scanErr := rows.Scan(&register.ID, &register.Username, &register.Email); scanErr != nil {
-				errorhandler.HandleInternalError(w, scanErr)
+
 				return
 			}
 			registers = append(registers, register)
 		}
 
 		if len(registers) == 0 {
-			errorhandler.WriteJSONError(w, http.StatusNotFound, "No data found")
+			errorhandler.SendErrorResponse(w, http.StatusNotFound, "No data found")
 			return
 		}
 		if jsonErr := jsonResponse.WriteJSONResponse(w, http.StatusOK, registers); jsonErr != nil {
 			// Handle the JSON response error
-			errorhandler.HandleInternalError(w, jsonErr)
+
 		}
 
 	}
-}
+}*/
 
 func handleUserLogout(w http.ResponseWriter, r *http.Request) {
 	// Logout logic
