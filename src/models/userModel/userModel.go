@@ -1,7 +1,8 @@
 package userModel
 
 type IFUser struct {
-	ID       int    `json:"id"`
+	UserId   int    `json:"userid"`
 	Username string `json:"username"`
+	Password string `json:"password"`
 	Email    string `json:"email"`
 }

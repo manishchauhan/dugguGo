@@ -5,7 +5,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishchauhan/dugguGo/models/adminModel"
-	"github.com/manishchauhan/dugguGo/servers/errorhandler"
 	"github.com/manishchauhan/dugguGo/servers/jsonResponse"
 	"github.com/manishchauhan/dugguGo/util/mysqlDbManager"
 )
@@ -27,7 +26,7 @@ func fetchAdminList(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := dm.Query("SELECT id,username,email FROM admin")
 		if err != nil {
-			errorhandler.HandleDatabaseError(w, err)
+			//errorhandler.HandleDatabaseError(w, err)
 			return
 		}
 		defer rows.Close()
@@ -37,19 +36,19 @@ func fetchAdminList(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 		for rows.Next() {
 			var register adminModel.IFAdmin
 			if scanErr := rows.Scan(&register.ID, &register.Username, &register.Email); scanErr != nil {
-				errorhandler.HandleInternalError(w, scanErr)
+				//errorhandler.HandleInternalError(w, scanErr)
 				return
 			}
 			registers = append(registers, register)
 		}
 
 		if len(registers) == 0 {
-			errorhandler.WriteJSONError(w, http.StatusNotFound, "No data found")
+			//errorhandler.WriteJSONError(w, http.StatusNotFound, "No data found")
 			return
 		}
 		if jsonErr := jsonResponse.WriteJSONResponse(w, http.StatusOK, registers); jsonErr != nil {
 			// Handle the JSON response error
-			errorhandler.HandleInternalError(w, jsonErr)
+			//	errorhandler.HandleInternalError(w, jsonErr)
 		}
 
 	}
