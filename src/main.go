@@ -176,7 +176,7 @@ func main() {
 	//deleteData()
 	//getData()
 	//
-	port := ":8080"
+	port := os.Getenv("HTTP_SERVER_PORT")
 	go func() {
 
 		mysqlhttpserver.StartServer(port, db)
@@ -184,7 +184,7 @@ func main() {
 	}()
 
 	//connect web socket
-	serverAddr := ":3001" // or any other desired address
+	serverAddr := os.Getenv("WEB_SOCKET_PORT") // or any other desired address
 
 	server := websocket.NewWebSocketServer(serverAddr)
 

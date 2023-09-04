@@ -134,6 +134,56 @@ func placeholderForValue(value interface{}) string {
 		return "?"
 	}
 }
+func (dm *DBManager) ExecuteInsertOrUpdate(tableName string, data interface{}, uniqueKeyColumns []string) (int64, error) {
+	// Build the INSERT INTO ... ON DUPLICATE KEY UPDATE ... SQL query
+	query, values := buildInsertOrUpdateQuery(tableName, data, uniqueKeyColumns)
+
+	db, err := dm.GetConnection()
+	if err != nil {
+		return 0, err
+	}
+
+	stmt, err := db.Prepare(query)
+	if err != nil {
+		return 0, fmt.Errorf("failed to prepare SQL statement: %w", err)
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Exec(values...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute SQL statement: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to retrieve rows affected: %w", err)
+	}
+
+	return rowsAffected, nil
+}
+
+func buildInsertOrUpdateQuery(tableName string, data interface{}, uniqueKeyColumns []string) (string, []interface{}) {
+	var valueFields, valuePlaceholders, updateFields []string
+	values := reflect.ValueOf(data).Elem()
+	var valuesArgs []interface{}
+
+	for i := 0; i < values.NumField(); i++ {
+		fieldName := values.Type().Field(i).Name
+		valueFields = append(valueFields, fieldName)
+		valuePlaceholders = append(valuePlaceholders, "?")
+		updateFields = append(updateFields, fmt.Sprintf("%s=VALUES(%s)", fieldName, fieldName))
+		valuesArgs = append(valuesArgs, values.Field(i).Interface())
+	}
+
+	// Build the SQL query
+	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) ON DUPLICATE KEY UPDATE %s",
+		tableName,
+		strings.Join(valueFields, ", "),
+		strings.Join(valuePlaceholders, ", "),
+		strings.Join(updateFields, ", "))
+
+	return query, valuesArgs
+}
 
 func (dm *DBManager) ExecuteInsert(tableName string, data interface{}) (int64, error) {
 	query := buildInsertQuery(tableName, data)
@@ -142,8 +192,6 @@ func (dm *DBManager) ExecuteInsert(tableName string, data interface{}) (int64, e
 	if err != nil {
 		return 0, err
 	}
-	defer db.Close()
-
 	stmt, err := db.Prepare(query)
 	if err != nil {
 		return 0, fmt.Errorf("failed to prepare SQL statement: %w", err)
