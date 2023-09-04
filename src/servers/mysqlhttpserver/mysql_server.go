@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/manishchauhan/dugguGo/routes"
 	"github.com/manishchauhan/dugguGo/util/mysqlDbManager"
@@ -14,8 +15,14 @@ import (
 func StartServer(port string, dm *mysqlDbManager.DBManager) {
 	rootRouter := mux.NewRouter()
 	routes.RegisterRoutes(rootRouter, dm)
-
-	http.Handle("/", rootRouter)
+	// Create a CORS middleware with allowed origins, methods, and headers
+	corsHandler := handlers.CORS(
+		handlers.AllowedOrigins([]string{"*"}), // Allow any origin
+		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
+		handlers.AllowedHeaders([]string{"Content-Type"}),
+		handlers.AllowCredentials(),
+	)
+	http.Handle("/", corsHandler(rootRouter))
 	// Add a route for the home page
 	rootRouter.HandleFunc("/", homeHandler).Methods("GET")
 	fmt.Println("Server is running on port:", port)

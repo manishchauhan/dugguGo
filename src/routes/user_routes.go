@@ -22,6 +22,72 @@ func RegisterUserRoutes(router *mux.Router, dm *mysqlDbManager.DBManager) {
 	subrouter.HandleFunc("/rooms", fetchRoomList).Methods("GET")
 	//subrouter.HandleFunc("/userlist", fetchAllUsers(dm)).Methods("GET")
 	subrouter.HandleFunc("/register", registerUser(dm)).Methods("POST")
+	subrouter.HandleFunc("/addnewscore", setHighScore(dm)).Methods("POST")
+	subrouter.HandleFunc("/fetchscores", getScores(dm)).Methods("GET")
+}
+func getScores(dm *mysqlDbManager.DBManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		// Construct the SQL query with the LIMIT clause
+		query := fmt.Sprintf("SELECT game_user, coins, distance FROM scores")
+
+		rows, err := dm.Query(query)
+		if err != nil {
+			errorhandler.SendErrorResponse(w, http.StatusMethodNotAllowed, jsonResponse.Methodnotallowed)
+			return
+		}
+		defer rows.Close()
+
+		var allScores []userModel.IFScore
+
+		for rows.Next() {
+			var newScore userModel.IFScore
+			if scanErr := rows.Scan(&newScore.Game_user, &newScore.Coins, &newScore.Distance); scanErr != nil {
+				errorhandler.SendErrorResponse(w, http.StatusMethodNotAllowed, "Something went wrong")
+				return
+			}
+			allScores = append(allScores, newScore)
+		}
+
+		if len(allScores) == 0 {
+			errorhandler.SendErrorResponse(w, http.StatusMethodNotAllowed, "Something went wrong")
+			return
+		}
+
+		if jsonErr := jsonResponse.WriteJSONResponse(w, http.StatusOK, allScores); jsonErr != nil {
+			errorhandler.SendErrorResponse(w, http.StatusMethodNotAllowed, "Json response is bad")
+			return
+		}
+	}
+}
+
+// set high score
+func setHighScore(dm *mysqlDbManager.DBManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			errorhandler.SendErrorResponse(w, http.StatusLengthRequired, jsonResponse.Methodnotallowed)
+			return
+		}
+
+		var scoreDetails userModel.IFScore
+		decoder := json.NewDecoder(r.Body)
+		if err := decoder.Decode(&scoreDetails); err != nil {
+			errorhandler.SendErrorResponse(w, http.StatusBadRequest, jsonResponse.Errordecoding+err.Error())
+			return
+		}
+		defer r.Body.Close()
+		// Specify the table name
+		tableName := "scores"
+		// Insert the data into the table
+		uniqueKeyColumns := []string{"game_user"}
+		_, err := dm.ExecuteInsertOrUpdate(tableName, &scoreDetails, uniqueKeyColumns)
+		if err != nil {
+			errorhandler.SendErrorResponse(w, http.StatusInternalServerError, jsonResponse.DBinsertError+err.Error())
+			return
+		}
+		// send back response if everything was successful
+		jsonResponse.SendJSONResponse(w, http.StatusOK, jsonResponse.UserRegistered)
+	}
 }
 
 // register user
@@ -42,6 +108,7 @@ func registerUser(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 		// Specify the table name
 		tableName := "user"
 		// Insert the data into the table
+		fmt.Println(user)
 		_, err := dm.ExecuteInsert(tableName, &user)
 		if err != nil {
 			errorhandler.SendErrorResponse(w, http.StatusInternalServerError, jsonResponse.DBinsertError+err.Error())
