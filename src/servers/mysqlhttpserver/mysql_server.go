@@ -16,8 +16,9 @@ func StartServer(port string, dm *mysqlDbManager.DBManager) {
 	rootRouter := mux.NewRouter()
 	routes.RegisterRoutes(rootRouter, dm)
 	// Create a CORS middleware with allowed origins, methods, and headers
+	allowedOrigins := []string{"http://localhost:3000", "http://192.168.29.216:3000"}
 	corsHandler := handlers.CORS(
-		handlers.AllowedOrigins([]string{"*"}), // Allow any origin
+		handlers.AllowedOrigins(allowedOrigins), // Allow any origin
 		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
 		handlers.AllowedHeaders([]string{"Content-Type"}),
 		handlers.AllowCredentials(),
