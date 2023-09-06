@@ -13,4 +13,7 @@ require (
 	golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b
 )
 
-require github.com/felixge/httpsnoop v1.0.1 // indirect
+require (
+	github.com/felixge/httpsnoop v1.0.1 // indirect
+	golang.org/x/crypto v0.12.0
+)

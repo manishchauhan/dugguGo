@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/manishchauhan/dugguGo/servers/errorhandler"
 )
 
 const (
@@ -24,7 +25,7 @@ var jwtSecret []byte
 
 // CustomClaims represents custom claims to be included in the JWT token.
 type CustomClaims struct {
-	UserID   string `json:"id"`
+	UserID   int    `json:"id"`
 	UserName string `json:"username"`
 	Email    string `json:"email"`
 	jwt.StandardClaims
@@ -44,7 +45,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		accessToken, err := r.Cookie(accessTokenCookieName)
 		if err != nil {
-			http.Error(w, "Access token missing", http.StatusUnauthorized)
+			errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Access token missing")
 			return
 		}
 
@@ -56,7 +57,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		if err != nil || !token.Valid {
 			refreshToken, err := r.Cookie(refreshTokenCookieName)
 			if err != nil {
-				http.Error(w, "Invalid token", http.StatusUnauthorized)
+				errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Invalid token")
 				return
 			}
 
@@ -66,16 +67,22 @@ func AuthMiddleware(next http.Handler) http.Handler {
 				return jwtSecret, nil
 			})
 			if err != nil || !refreshTokenToken.Valid {
-				http.Error(w, "Invalid token", http.StatusUnauthorized)
+				errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Invalid token")
 				return
 			}
 
 			// Refresh access token and set new access token and refresh token cookies
-			newAccessToken := createAccessToken(claims.UserID, claims.UserName, claims.Email)
-			newRefreshToken := createRefreshToken(claims.UserID, claims.UserName, claims.Email)
-			http.SetCookie(w, &http.Cookie{Name: accessTokenCookieName, Value: newAccessToken, HttpOnly: true, MaxAge: int(accessTokenDuration.Seconds())})
-			http.SetCookie(w, &http.Cookie{Name: refreshTokenCookieName, Value: newRefreshToken, HttpOnly: true, MaxAge: int(refreshTokenDuration.Seconds())})
-
+			newAccessToken, accessTokenError := CreateAccessToken(claims.UserID, claims.UserName, claims.Email)
+			if err != accessTokenError {
+				errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Invalid token")
+				return
+			}
+			newRefreshToken, refreshTokenError := CreateRefreshToken(claims.UserID, claims.UserName, claims.Email)
+			if err != refreshTokenError {
+				errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Invalid token")
+				return
+			}
+			SetCookie(w, newAccessToken, newRefreshToken)
 			r = r.WithContext(context.WithValue(r.Context(), userContextKey, claims.UserID))
 			next.ServeHTTP(w, r)
 		} else {
@@ -86,7 +93,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func createAccessToken(userid, username, email string) string {
+func CreateAccessToken(userid int, username string, email string) (string, error) {
 	claims := &CustomClaims{
 		UserID:   userid,
 		UserName: username,
@@ -98,11 +105,15 @@ func createAccessToken(userid, username, email string) string {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString(jwtSecret)
-	return tokenString
+	tokenString, err := token.SignedString(jwtSecret)
+	if err != nil {
+		return "", err
+	}
+
+	return tokenString, nil
 }
 
-func createRefreshToken(userid, username, email string) string {
+func CreateRefreshToken(userid int, username string, email string) (string, error) {
 	claims := &CustomClaims{
 		UserID:   userid,
 		UserName: username,
@@ -114,6 +125,13 @@ func createRefreshToken(userid, username, email string) string {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString(jwtSecret)
-	return tokenString
+	tokenString, err := token.SignedString(jwtSecret)
+	if err != nil {
+		return "", err
+	}
+	return tokenString, nil
+}
+func SetCookie(w http.ResponseWriter, newAccessToken string, newRefreshToken string) {
+	http.SetCookie(w, &http.Cookie{Name: accessTokenCookieName, Secure: true, Value: newAccessToken, Path: "/", Domain: "localhost", HttpOnly: true, MaxAge: int(accessTokenDuration.Seconds()), SameSite: http.SameSiteNoneMode})
+	http.SetCookie(w, &http.Cookie{Name: refreshTokenCookieName, Secure: true, Value: newRefreshToken, Path: "/", Domain: "localhost", HttpOnly: true, MaxAge: int(refreshTokenDuration.Seconds()), SameSite: http.SameSiteNoneMode})
 }

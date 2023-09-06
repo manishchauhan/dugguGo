@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,13 +11,15 @@ import (
 	"github.com/manishchauhan/dugguGo/servers/errorhandler"
 	"github.com/manishchauhan/dugguGo/servers/jsonResponse"
 
+	"github.com/manishchauhan/dugguGo/util/auth/jwtAuth"
 	"github.com/manishchauhan/dugguGo/util/mysqlDbManager"
+	"github.com/manishchauhan/dugguGo/util/passwordutils"
 )
 
 func RegisterUserRoutes(router *mux.Router, dm *mysqlDbManager.DBManager) {
 
 	subrouter := router.PathPrefix("/user").Subrouter()
-	subrouter.HandleFunc("/login", handleUserLogin).Methods("POST")
+	subrouter.HandleFunc("/login", handleUserLogin(dm)).Methods("POST")
 	subrouter.HandleFunc("/logout", handleUserLogout).Methods("POST")
 	subrouter.HandleFunc("/favorite-games", fetchFavoriteGames).Methods("GET")
 	subrouter.HandleFunc("/rooms", fetchRoomList).Methods("GET")
@@ -28,7 +31,6 @@ func RegisterUserRoutes(router *mux.Router, dm *mysqlDbManager.DBManager) {
 func getScores(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		// Construct the SQL query with the LIMIT clause
 		query := fmt.Sprintf("SELECT game_user, coins, distance FROM scores")
 
 		rows, err := dm.Query(query)
@@ -99,6 +101,7 @@ func registerUser(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 		}
 
 		var user userModel.IFUser
+
 		decoder := json.NewDecoder(r.Body)
 		if err := decoder.Decode(&user); err != nil {
 			errorhandler.SendErrorResponse(w, http.StatusBadRequest, jsonResponse.Errordecoding+err.Error())
@@ -108,6 +111,12 @@ func registerUser(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 		// Specify the table name
 		tableName := "user"
 		// Insert the data into the table
+		hashedPassword, hashError := passwordutils.HashPassword(user.Password)
+		if hashError != nil {
+			errorhandler.SendErrorResponse(w, http.StatusBadRequest, "Failed to hash password:"+hashError.Error())
+			return
+		}
+		user.Password = string(hashedPassword)
 		fmt.Println(user)
 		_, err := dm.ExecuteInsert(tableName, &user)
 		if err != nil {
@@ -119,10 +128,70 @@ func registerUser(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 	}
 
 }
-func handleUserLogin(w http.ResponseWriter, r *http.Request) {
+func handleUserLogin(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 	// Authentication logic
-	fmt.Fprintln(w, "User Login")
-	return
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			errorhandler.SendErrorResponse(w, http.StatusMethodNotAllowed, jsonResponse.Methodnotallowed)
+			return
+		}
+		var user userModel.IFUser
+
+		decoder := json.NewDecoder(r.Body)
+		if err := decoder.Decode(&user); err != nil {
+			errorhandler.SendErrorResponse(w, http.StatusBadRequest, jsonResponse.Errordecoding+err.Error())
+			return
+		}
+		defer r.Body.Close()
+		//check password
+		// Prepare and execute the SQL query using QueryRow from DBManager
+		query := "SELECT * FROM user WHERE username = ?"
+
+		row, err := dm.QueryRow(query, user.Username)
+
+		if err != nil {
+			errorhandler.SendErrorResponse(w, http.StatusBadRequest, "Error querying the database"+err.Error())
+			return
+		}
+
+		var foundUser userModel.IFUser
+		err = row.Scan(&foundUser.Userid, &foundUser.Username, &foundUser.Password, &foundUser.Email)
+		if err == sql.ErrNoRows {
+			errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "User not found")
+			return
+		} else if err != nil {
+			errorhandler.SendErrorResponse(w, http.StatusInternalServerError, "Error scanning database row")
+			return
+		}
+
+		// Verify the password using bcrypt
+		err = passwordutils.ComparePasswords([]byte(foundUser.Password), user.Password)
+		if err != nil {
+
+			errorhandler.SendErrorResponse(w, http.StatusInternalServerError, "Invalid password")
+			return
+		}
+		// Everything is going good now create a jwt token and validate
+		accessToken, err := jwtAuth.CreateAccessToken(foundUser.Userid, foundUser.Email, foundUser.Email)
+		if err != nil {
+			http.Error(w, "Error creating access token", http.StatusInternalServerError)
+			errorhandler.SendErrorResponse(w, http.StatusInternalServerError, "Error creating access token")
+			return
+		}
+
+		refreshToken, err := jwtAuth.CreateRefreshToken(foundUser.Userid, foundUser.Email, foundUser.Email)
+		if err != nil {
+			errorhandler.SendErrorResponse(w, http.StatusInternalServerError, "Error creating access token")
+			return
+		}
+		//we need to use https for better security
+		var jsonUserObject userModel.IFUser
+		jsonUserObject.Email = foundUser.Email
+		jsonUserObject.Userid = foundUser.Userid
+		jsonUserObject.Username = foundUser.Username
+		jwtAuth.SetCookie(w, accessToken, refreshToken)
+		jsonResponse.WriteJSONResponse(w, http.StatusOK, jsonUserObject)
+	}
 }
 
 /*
