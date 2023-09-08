@@ -27,6 +27,17 @@ func RegisterUserRoutes(router *mux.Router, dm *mysqlDbManager.DBManager) {
 	subrouter.HandleFunc("/register", registerUser(dm)).Methods("POST")
 	subrouter.HandleFunc("/addnewscore", setHighScore(dm)).Methods("POST")
 	subrouter.HandleFunc("/fetchscores", getScores(dm)).Methods("GET")
+	subrouter.Handle("/games", jwtAuth.AuthMiddleware(http.HandlerFunc(getGames(dm)))).Methods("GET")
+	subrouter.HandleFunc("/chat", fetchRoomList).Methods("GET")
+}
+func getGames(dm *mysqlDbManager.DBManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		successResponse := jsonResponse.ResponseMessage{
+			Status:  true,
+			Message: "You have successfully got game payload",
+		}
+		jsonResponse.WriteJSONResponse(w, http.StatusOK, successResponse)
+	}
 }
 func getScores(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

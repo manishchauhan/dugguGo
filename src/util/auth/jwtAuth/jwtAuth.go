@@ -132,6 +132,6 @@ func CreateRefreshToken(userid int, username string, email string) (string, erro
 	return tokenString, nil
 }
 func SetCookie(w http.ResponseWriter, newAccessToken string, newRefreshToken string) {
-	http.SetCookie(w, &http.Cookie{Name: accessTokenCookieName, Secure: true, Value: newAccessToken, Path: "/", Domain: "localhost", HttpOnly: true, MaxAge: int(accessTokenDuration.Seconds()), SameSite: http.SameSiteNoneMode})
-	http.SetCookie(w, &http.Cookie{Name: refreshTokenCookieName, Secure: true, Value: newRefreshToken, Path: "/", Domain: "localhost", HttpOnly: true, MaxAge: int(refreshTokenDuration.Seconds()), SameSite: http.SameSiteNoneMode})
+	http.SetCookie(w, &http.Cookie{Name: accessTokenCookieName, Secure: true, Value: newAccessToken, Path: "/", Domain: "localhost", HttpOnly: false, MaxAge: int(accessTokenDuration.Seconds()), SameSite: http.SameSiteNoneMode})
+	http.SetCookie(w, &http.Cookie{Name: refreshTokenCookieName, Secure: true, Value: newRefreshToken, Path: "/", Domain: "localhost", HttpOnly: false, MaxAge: int(refreshTokenDuration.Seconds()), SameSite: http.SameSiteNoneMode})
 }

@@ -14,8 +14,8 @@ const (
 )
 
 type ResponseMessage struct {
-	Message string `json:"message"`
-	Status  int    `json:"status"`
+	Message string `json:"message"` // msg if needed
+	Status  bool   `json:"status"`  //true if successful
 }
 
 // use this method for select or multiselect
