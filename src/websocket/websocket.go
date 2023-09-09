@@ -85,12 +85,13 @@ func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request
 	s.connections[conn] = true
 	s.connectionsMu.Unlock()
 
-	// Send welcome message to client
-	err = sendMessageToClient(conn, "Welcome to the Chat Center")
-	if err != nil {
-		fmt.Println("Error sending welcome message:", err)
-		return
-	}
+	// Send welcome message to client just for testing
+	/*
+		err = sendMessageToClient(conn, "Welcome to the Chat Center")
+		if err != nil {
+			fmt.Println("Error sending welcome message:", err)
+			return
+		}*/
 
 	incomingMessages := make(chan []byte)
 	outgoingMessages := make(chan []byte)
