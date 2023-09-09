@@ -27,14 +27,34 @@ func RegisterUserRoutes(router *mux.Router, dm *mysqlDbManager.DBManager) {
 	subrouter.HandleFunc("/register", registerUser(dm)).Methods("POST")
 	subrouter.HandleFunc("/addnewscore", setHighScore(dm)).Methods("POST")
 	subrouter.HandleFunc("/fetchscores", getScores(dm)).Methods("GET")
-	subrouter.Handle("/games", jwtAuth.AuthMiddleware(http.HandlerFunc(getGames(dm)))).Methods("GET")
-	subrouter.HandleFunc("/chat", fetchRoomList).Methods("GET")
+	subrouter.Handle("/home", jwtAuth.AuthMiddleware(http.HandlerFunc(getHome(dm)))).Methods("GET")
+	subrouter.Handle("/home/chat", jwtAuth.AuthMiddleware(http.HandlerFunc(getChat(dm)))).Methods("GET")
 }
-func getGames(dm *mysqlDbManager.DBManager) http.HandlerFunc {
+func getChat(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		var User userModel.IFUser
+		User.Userid = r.Context().Value("userid").(int)
+		User.Username = r.Context().Value("username").(string)
+		User.Email = r.Context().Value("email").(string)
+		//Everything is great create a websocket connection with clinet================
 		successResponse := jsonResponse.ResponseMessage{
-			Status:  true,
-			Message: "You have successfully got game payload",
+			LoginStatus: true,
+			Message:     "You have successfully got game payload",
+			User:        User,
+		}
+		jsonResponse.WriteJSONResponse(w, http.StatusOK, successResponse)
+	}
+}
+func getHome(dm *mysqlDbManager.DBManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var User userModel.IFUser
+		User.Userid = r.Context().Value("userid").(int)
+		User.Username = r.Context().Value("username").(string)
+		User.Email = r.Context().Value("email").(string)
+		successResponse := jsonResponse.ResponseMessage{
+			LoginStatus: true,
+			Message:     "You have successfully got game payload",
+			User:        User,
 		}
 		jsonResponse.WriteJSONResponse(w, http.StatusOK, successResponse)
 	}
@@ -183,14 +203,14 @@ func handleUserLogin(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 			return
 		}
 		// Everything is going good now create a jwt token and validate
-		accessToken, err := jwtAuth.CreateAccessToken(foundUser.Userid, foundUser.Email, foundUser.Email)
+		accessToken, err := jwtAuth.CreateAccessToken(foundUser.Userid, foundUser.Username, foundUser.Email)
 		if err != nil {
 			http.Error(w, "Error creating access token", http.StatusInternalServerError)
 			errorhandler.SendErrorResponse(w, http.StatusInternalServerError, "Error creating access token")
 			return
 		}
 
-		refreshToken, err := jwtAuth.CreateRefreshToken(foundUser.Userid, foundUser.Email, foundUser.Email)
+		refreshToken, err := jwtAuth.CreateRefreshToken(foundUser.Userid, foundUser.Username, foundUser.Email)
 		if err != nil {
 			errorhandler.SendErrorResponse(w, http.StatusInternalServerError, "Error creating access token")
 			return

@@ -2,6 +2,7 @@ package jwtAuth
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -17,15 +18,17 @@ const (
 	accessTokenDuration    = 15 * time.Minute    // Access token expiration: 15 minutes
 )
 
-type contextKey string
-
-const userContextKey contextKey = "user"
+var (
+	userIDContextKey   = "userid"
+	usernameContextKey = "username"
+	emailContextKey    = "email"
+)
 
 var jwtSecret []byte
 
 // CustomClaims represents custom claims to be included in the JWT token.
 type CustomClaims struct {
-	UserID   int    `json:"id"`
+	UserID   int    `json:"userid"`
 	UserName string `json:"username"`
 	Email    string `json:"email"`
 	jwt.StandardClaims
@@ -83,12 +86,19 @@ func AuthMiddleware(next http.Handler) http.Handler {
 				return
 			}
 			SetCookie(w, newAccessToken, newRefreshToken)
-			r = r.WithContext(context.WithValue(r.Context(), userContextKey, claims.UserID))
-			next.ServeHTTP(w, r)
+			// Store userid, username, and email in the request context
+			fmt.Println(claims)
+			ctx := context.WithValue(r.Context(), userIDContextKey, claims.UserID)
+			ctx = context.WithValue(ctx, usernameContextKey, claims.UserName)
+			ctx = context.WithValue(ctx, emailContextKey, claims.Email)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		} else {
 			claims, _ := token.Claims.(*CustomClaims)
-			r = r.WithContext(context.WithValue(r.Context(), userContextKey, claims.UserID))
-			next.ServeHTTP(w, r)
+			fmt.Println(claims)
+			ctx := context.WithValue(r.Context(), userIDContextKey, claims.UserID)
+			ctx = context.WithValue(ctx, usernameContextKey, claims.UserName)
+			ctx = context.WithValue(ctx, emailContextKey, claims.Email)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		}
 	})
 }

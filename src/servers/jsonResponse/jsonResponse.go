@@ -4,6 +4,8 @@ package jsonResponse
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/manishchauhan/dugguGo/models/userModel"
 )
 
 const (
@@ -14,8 +16,9 @@ const (
 )
 
 type ResponseMessage struct {
-	Message string `json:"message"` // msg if needed
-	Status  bool   `json:"status"`  //true if successful
+	Message     string `json:"message"` // msg if needed
+	LoginStatus bool   `json:"status"`  //true if successful
+	User        userModel.IFUser
 }
 
 // use this method for select or multiselect
