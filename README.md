@@ -11,6 +11,6 @@ Task to be done (Month1)
   10. jenkins pipeline
   11. Task to be done (Month2)
 
-DATABASE_KEY="root:manish@tcp(127.0.0.1:3306)/chatmsg"
+
 
 
