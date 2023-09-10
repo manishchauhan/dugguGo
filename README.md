@@ -1,3 +1,5 @@
+Scalable chat application server using MySQL, WebSocket and Go 
+
 Task to be done (Month1)
   1. Mysql connection pool (reusability) done
   2. CRUD operation  (reusability) done
