@@ -20,7 +20,7 @@ func RegisterUserRoutes(router *mux.Router, dm *mysqlDbManager.DBManager) {
 
 	subrouter := router.PathPrefix("/user").Subrouter()
 	subrouter.HandleFunc("/login", handleUserLogin(dm)).Methods("POST")
-	subrouter.HandleFunc("/logout", handleUserLogout).Methods("POST")
+	subrouter.HandleFunc("/logout", handleUserLogout).Methods("GET")
 	subrouter.HandleFunc("/favorite-games", fetchFavoriteGames).Methods("GET")
 	subrouter.HandleFunc("/rooms", fetchRoomList).Methods("GET")
 	//subrouter.HandleFunc("/userlist", fetchAllUsers(dm)).Methods("GET")
@@ -215,12 +215,12 @@ func handleUserLogin(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 			errorhandler.SendErrorResponse(w, http.StatusInternalServerError, "Error creating access token")
 			return
 		}
+		jwtAuth.SetCookies(w, accessToken, refreshToken)
 		//we need to use https for better security
 		var jsonUserObject userModel.IFUser
 		jsonUserObject.Email = foundUser.Email
 		jsonUserObject.Userid = foundUser.Userid
 		jsonUserObject.Username = foundUser.Username
-		jwtAuth.SetCookie(w, accessToken, refreshToken)
 		jsonResponse.WriteJSONResponse(w, http.StatusOK, jsonUserObject)
 	}
 }
@@ -260,7 +260,8 @@ func fetchAllUsers(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 
 func handleUserLogout(w http.ResponseWriter, r *http.Request) {
 	// Logout logic
-	fmt.Fprintln(w, "User Logout")
+	jwtAuth.ClearCookies(w)
+	jsonResponse.SendJSONResponse(w, http.StatusOK, "You have been logged out")
 }
 
 func fetchFavoriteGames(w http.ResponseWriter, r *http.Request) {

@@ -14,7 +14,7 @@ import (
 const (
 	refreshTokenCookieName = "refresh_token"
 	accessTokenCookieName  = "access_token"
-	refreshTokenDuration   = 24 * 30 * time.Hour // Refresh token expiration: 30 days
+	refreshTokenDuration   = 24 * 60 * time.Hour // Refresh token expiration: 60 days
 	accessTokenDuration    = 15 * time.Minute    // Access token expiration: 15 minutes
 )
 
@@ -46,61 +46,113 @@ func SetEnvData() {
 // AuthMiddleware is a middleware to authenticate and authorize requests using JWT.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		accessToken, err := r.Cookie(accessTokenCookieName)
-		if err != nil {
-			errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Access token missing")
+		// Attempt to retrieve the access and refresh tokens from cookies
+		accessToken, accessTokenErr := r.Cookie(accessTokenCookieName)
+		refreshToken, refreshTokenErr := r.Cookie(refreshTokenCookieName)
+
+		// Helper function to parse and validate a token
+		parseAndValidateToken := func(tokenString string) (*CustomClaims, error) {
+			token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
+				return jwtSecret, nil
+			})
+			if err != nil || !token.Valid {
+				return nil, err
+			}
+			claims, _ := token.Claims.(*CustomClaims)
+			return claims, nil
+		}
+
+		// Check if both access token and refresh token are missing
+		if accessTokenErr == http.ErrNoCookie && refreshTokenErr == http.ErrNoCookie {
+			errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Session is invalid or has expired. Please log in again.")
 			return
 		}
 
-		tokenString := accessToken.Value
-
-		token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
-			return jwtSecret, nil
-		})
-		if err != nil || !token.Valid {
-			refreshToken, err := r.Cookie(refreshTokenCookieName)
+		if accessTokenErr == nil {
+			// Access token is present, attempt to validate it
+			claims, err := parseAndValidateToken(accessToken.Value)
 			if err != nil {
-				errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Invalid token")
+				if refreshTokenErr == nil {
+					// Access token is invalid, try refreshing with the refresh token
+					claims, err := parseAndValidateToken(refreshToken.Value)
+					if err != nil {
+						errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Session is invalid or has expired. Please log in again.")
+						return
+					}
+
+					// Generate a new access token and set it in the response cookie
+					newAccessToken, err := CreateAccessToken(claims.UserID, claims.UserName, claims.Email)
+					if err != nil {
+						http.Error(w, "Error creating access token", http.StatusInternalServerError)
+						errorhandler.SendErrorResponse(w, http.StatusInternalServerError, "Error creating access token")
+						return
+					}
+					SetAccessTokenInCookie(w, newAccessToken)
+
+					// Store user information in the request context
+					ctx := addToContext(r.Context(),
+						userIDContextKey, claims.UserID,
+						usernameContextKey, claims.UserName,
+						emailContextKey, claims.Email,
+					)
+
+					// Proceed with the next HTTP handler
+					next.ServeHTTP(w, r.WithContext(ctx))
+				} else {
+					errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Access token is invalid. Please log in again.")
+				}
 				return
 			}
 
-			refreshTokenString := refreshToken.Value
-			claims := &CustomClaims{}
-			refreshTokenToken, err := jwt.ParseWithClaims(refreshTokenString, claims, func(token *jwt.Token) (interface{}, error) {
-				return jwtSecret, nil
-			})
-			if err != nil || !refreshTokenToken.Valid {
-				errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Invalid token")
-				return
-			}
-
-			// Refresh access token and set new access token and refresh token cookies
-			newAccessToken, accessTokenError := CreateAccessToken(claims.UserID, claims.UserName, claims.Email)
-			if err != accessTokenError {
-				errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Invalid token")
-				return
-			}
-			newRefreshToken, refreshTokenError := CreateRefreshToken(claims.UserID, claims.UserName, claims.Email)
-			if err != refreshTokenError {
-				errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Invalid token")
-				return
-			}
-			SetCookie(w, newAccessToken, newRefreshToken)
-			// Store userid, username, and email in the request context
+			// Access token is valid, store user information in the request context
 			fmt.Println(claims)
-			ctx := context.WithValue(r.Context(), userIDContextKey, claims.UserID)
-			ctx = context.WithValue(ctx, usernameContextKey, claims.UserName)
-			ctx = context.WithValue(ctx, emailContextKey, claims.Email)
+			ctx := addToContext(r.Context(),
+				userIDContextKey, claims.UserID,
+				usernameContextKey, claims.UserName,
+				emailContextKey, claims.Email,
+			)
+
+			// Proceed with the next HTTP handler
 			next.ServeHTTP(w, r.WithContext(ctx))
-		} else {
-			claims, _ := token.Claims.(*CustomClaims)
-			fmt.Println(claims)
-			ctx := context.WithValue(r.Context(), userIDContextKey, claims.UserID)
-			ctx = context.WithValue(ctx, usernameContextKey, claims.UserName)
-			ctx = context.WithValue(ctx, emailContextKey, claims.Email)
+		} else if refreshTokenErr == nil {
+			// Access token is missing but refresh token is present, refresh it
+			claims, err := parseAndValidateToken(refreshToken.Value)
+			if err != nil {
+				errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Session is invalid or has expired. Please log in again.")
+				return
+			}
+
+			// Generate a new access token and set it in the response cookie
+			newAccessToken, err := CreateAccessToken(claims.UserID, claims.UserName, claims.Email)
+			if err != nil {
+				http.Error(w, "Error creating access token", http.StatusInternalServerError)
+				errorhandler.SendErrorResponse(w, http.StatusInternalServerError, "Error creating access token")
+				return
+			}
+			SetAccessTokenInCookie(w, newAccessToken)
+
+			// Store user information in the request context
+			ctx := addToContext(r.Context(),
+				userIDContextKey, claims.UserID,
+				usernameContextKey, claims.UserName,
+				emailContextKey, claims.Email,
+			)
+
+			// Proceed with the next HTTP handler
 			next.ServeHTTP(w, r.WithContext(ctx))
 		}
 	})
+}
+
+// Helper function to add multiple key-value pairs to the context
+func addToContext(ctx context.Context, keyValues ...interface{}) context.Context {
+	for i := 0; i < len(keyValues); i += 2 {
+		key := keyValues[i]
+		value := keyValues[i+1]
+		ctx = context.WithValue(ctx, key, value)
+	}
+
+	return ctx
 }
 
 func CreateAccessToken(userid int, username string, email string) (string, error) {
@@ -141,7 +193,41 @@ func CreateRefreshToken(userid int, username string, email string) (string, erro
 	}
 	return tokenString, nil
 }
-func SetCookie(w http.ResponseWriter, newAccessToken string, newRefreshToken string) {
+
+func SetCookies(w http.ResponseWriter, newAccessToken string, newRefreshToken string) {
+	SetAccessTokenInCookie(w, newAccessToken)
+	SetRefreshTokenCookie(w, newRefreshToken)
+}
+func SetAccessTokenInCookie(w http.ResponseWriter, newAccessToken string) {
 	http.SetCookie(w, &http.Cookie{Name: accessTokenCookieName, Secure: true, Value: newAccessToken, Path: "/", Domain: "localhost", HttpOnly: false, MaxAge: int(accessTokenDuration.Seconds()), SameSite: http.SameSiteNoneMode})
+}
+func SetRefreshTokenCookie(w http.ResponseWriter, newRefreshToken string) {
 	http.SetCookie(w, &http.Cookie{Name: refreshTokenCookieName, Secure: true, Value: newRefreshToken, Path: "/", Domain: "localhost", HttpOnly: false, MaxAge: int(refreshTokenDuration.Seconds()), SameSite: http.SameSiteNoneMode})
+}
+
+// Helper function to clear cookies
+func ClearCookies(w http.ResponseWriter) {
+	// Clear the access token cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     accessTokenCookieName,
+		Secure:   true,
+		Value:    "",
+		Path:     "/",
+		Domain:   "localhost", // Replace with your domain
+		HttpOnly: false,
+		MaxAge:   0, // Set MaxAge to 0 to delete the cookie
+		SameSite: http.SameSiteNoneMode,
+	})
+
+	// Clear the refresh token cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshTokenCookieName,
+		Secure:   true,
+		Value:    "",
+		Path:     "/",
+		Domain:   "localhost", // Replace with your domain
+		HttpOnly: false,
+		MaxAge:   0, // Set MaxAge to 0 to delete the cookie
+		SameSite: http.SameSiteNoneMode,
+	})
 }
