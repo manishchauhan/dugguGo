@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
+	"github.com/manishchauhan/dugguGo/util/auth/jwtAuth"
 	"github.com/rs/cors"
 )
 
@@ -38,7 +39,7 @@ type IFMessage struct {
 type WebSocketServer struct {
 	upgrader      websocket.Upgrader
 	addr          string
-	connections   map[*websocket.Conn]bool
+	connections   map[string]*websocket.Conn
 	connectionsMu sync.Mutex
 }
 
@@ -53,7 +54,7 @@ func NewWebSocketServer(addr string) *WebSocketServer {
 	return &WebSocketServer{
 		upgrader:    upgrader,
 		addr:        addr,
-		connections: make(map[*websocket.Conn]bool),
+		connections: make(map[string]*websocket.Conn),
 	}
 }
 
@@ -74,24 +75,57 @@ func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request
 	}
 	//remove connection when user disconnect it
 	defer func() {
+		// Remove the connection when a user disconnects
 		s.connectionsMu.Lock()
-		delete(s.connections, conn)
-		s.connectionsMu.Unlock()
-		conn.Close()
+		defer s.connectionsMu.Unlock()
+
+		// Find the username associated with the connection
+		var usernameToDelete string
+		for username, userConn := range s.connections {
+			if userConn == conn {
+				usernameToDelete = username
+				break
+			}
+		}
+		println(usernameToDelete + "hello")
+		// If a username is found, remove it from the map
+		if usernameToDelete != "" {
+			fmt.Printf("%s left the room\n", usernameToDelete)
+			delete(s.connections, usernameToDelete)
+			conn.Close()
+		}
 	}()
 
-	// Lock the mutex while adding the connection
-	s.connectionsMu.Lock()
-	s.connections[conn] = true
-	s.connectionsMu.Unlock()
-
-	// Send welcome message to client just for testing
-	/*
-		err = sendMessageToClient(conn, "Welcome to the Chat Center")
+	//use refresh token to get user data starts___________________________________
+	refreshTokenCookieName := "refresh_token"
+	refreshToken, refreshTokenErr := r.Cookie(refreshTokenCookieName)
+	if refreshTokenErr != nil {
+		err = sendMessageToClient(conn, "Access token is invalid. Please log in again.")
 		if err != nil {
 			fmt.Println("Error sending welcome message:", err)
 			return
-		}*/
+		}
+		return
+	}
+	claims, parseError := jwtAuth.ParseAndValidateToken(refreshToken.Value)
+	if parseError != nil {
+		err = sendMessageToClient(conn, "Access token is invalid. Please log in again.")
+		if err != nil {
+			fmt.Println("Error sending welcome message:", err)
+			return
+		}
+		return
+	}
+	chatUserName := claims.UserName
+	err = sendMessageToClient(conn, "Welcome to chat room "+chatUserName)
+	if err != nil {
+		fmt.Println("Error sending welcome message:", err)
+		return
+	}
+	s.connectionsMu.Lock()
+	s.connections[chatUserName] = conn
+	s.connectionsMu.Unlock()
+	//use refresh token to get user data starts___________________________________
 
 	incomingMessages := make(chan []byte)
 	outgoingMessages := make(chan []byte)
@@ -138,7 +172,7 @@ func (s *WebSocketServer) handleOutgoing(wg *sync.WaitGroup, outgoingMessages <-
 	for msg := range outgoingMessages {
 		// Lock the mutex while iterating through the connections map
 		s.connectionsMu.Lock()
-		for conn := range s.connections {
+		for _, conn := range s.connections {
 			err := sendMessageToClient(conn, string(msg))
 			if err != nil {
 				fmt.Println("Error sending message:", err)
