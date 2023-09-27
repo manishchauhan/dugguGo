@@ -27,6 +27,7 @@ func RegisterUserRoutes(router *mux.Router, dm *mysqlDbManager.DBManager) {
 	subrouter.HandleFunc("/register", registerUser(dm)).Methods("POST")
 	subrouter.HandleFunc("/addnewscore", setHighScore(dm)).Methods("POST")
 	subrouter.HandleFunc("/fetchscores", getScores(dm)).Methods("GET")
+	subrouter.HandleFunc("/userexists", userExists(dm)).Methods("GET")
 	subrouter.Handle("/home", jwtAuth.AuthMiddleware(http.HandlerFunc(getHome(dm)))).Methods("GET")
 	subrouter.Handle("/home/chat", jwtAuth.AuthMiddleware(http.HandlerFunc(getChat(dm)))).Methods("GET")
 }
@@ -43,6 +44,37 @@ func getChat(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 			User:        User,
 		}
 		jsonResponse.WriteJSONResponse(w, http.StatusOK, successResponse)
+	}
+}
+func userExists(dm *mysqlDbManager.DBManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract the user ID from the request, assuming it's provided in the query parameters
+		userID := r.URL.Query().Get("game_user")
+		if userID == "" {
+			errorhandler.SendErrorResponse(w, http.StatusBadRequest, "User ID is required")
+			return
+		}
+
+		// Check if the user already exists in the database
+		checkUserQuery := fmt.Sprintf("SELECT COUNT(*) FROM scores WHERE game_user = ?")
+		var userCount int
+
+		// Execute the query and scan the result into userCount
+		row, err := dm.QueryRow(checkUserQuery, userID)
+		if err != nil {
+			errorhandler.SendErrorResponse(w, http.StatusBadRequest, "Error querying the database"+err.Error())
+			return
+		}
+		err = row.Scan(&userCount)
+		if err != nil {
+			errorhandler.SendErrorResponse(w, http.StatusInternalServerError, "Database error")
+			return
+		}
+
+		if userCount > 0 {
+			errorhandler.SendErrorResponse(w, http.StatusConflict, "User already exists")
+			return
+		}
 	}
 }
 func getHome(dm *mysqlDbManager.DBManager) http.HandlerFunc {
@@ -62,7 +94,7 @@ func getHome(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 func getScores(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		query := fmt.Sprintf("SELECT game_user, coins, distance FROM scores")
+		query := fmt.Sprintf("SELECT game_user, coins, distance, legend FROM scores")
 
 		rows, err := dm.Query(query)
 		if err != nil {
@@ -75,7 +107,7 @@ func getScores(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 
 		for rows.Next() {
 			var newScore userModel.IFScore
-			if scanErr := rows.Scan(&newScore.Game_user, &newScore.Coins, &newScore.Distance); scanErr != nil {
+			if scanErr := rows.Scan(&newScore.Game_user, &newScore.Coins, &newScore.Distance, &newScore.Legend); scanErr != nil {
 				errorhandler.SendErrorResponse(w, http.StatusMethodNotAllowed, "Something went wrong")
 				return
 			}

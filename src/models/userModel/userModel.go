@@ -10,4 +10,5 @@ type IFScore struct {
 	Game_user string `json:"game_user"`
 	Coins     int    `json:"coins"`
 	Distance  int    `json:"distance"`
+	Legend    bool   `json:"legend"`
 }

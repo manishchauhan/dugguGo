@@ -41,6 +41,18 @@ func SetEnvData() {
 	))
 }
 
+// validate access token secret and return claims or error
+func ParseAndValidateToken(tokenString string) (*CustomClaims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecret, nil
+	})
+	if err != nil || !token.Valid {
+		return nil, err
+	}
+	claims, _ := token.Claims.(*CustomClaims)
+	return claims, nil
+}
+
 // Each route should contain this middle which would confrim that user need to be authenticated or
 // not based on jwt toekn
 // AuthMiddleware is a middleware to authenticate and authorize requests using JWT.
@@ -50,18 +62,6 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		accessToken, accessTokenErr := r.Cookie(accessTokenCookieName)
 		refreshToken, refreshTokenErr := r.Cookie(refreshTokenCookieName)
 
-		// Helper function to parse and validate a token
-		parseAndValidateToken := func(tokenString string) (*CustomClaims, error) {
-			token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
-				return jwtSecret, nil
-			})
-			if err != nil || !token.Valid {
-				return nil, err
-			}
-			claims, _ := token.Claims.(*CustomClaims)
-			return claims, nil
-		}
-
 		// Check if both access token and refresh token are missing
 		if accessTokenErr == http.ErrNoCookie && refreshTokenErr == http.ErrNoCookie {
 			errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Session is invalid or has expired. Please log in again.")
@@ -70,11 +70,11 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 		if accessTokenErr == nil {
 			// Access token is present, attempt to validate it
-			claims, err := parseAndValidateToken(accessToken.Value)
+			claims, err := ParseAndValidateToken(accessToken.Value)
 			if err != nil {
 				if refreshTokenErr == nil {
 					// Access token is invalid, try refreshing with the refresh token
-					claims, err := parseAndValidateToken(refreshToken.Value)
+					claims, err := ParseAndValidateToken(refreshToken.Value)
 					if err != nil {
 						errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Session is invalid or has expired. Please log in again.")
 						return
@@ -116,7 +116,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		} else if refreshTokenErr == nil {
 			// Access token is missing but refresh token is present, refresh it
-			claims, err := parseAndValidateToken(refreshToken.Value)
+			claims, err := ParseAndValidateToken(refreshToken.Value)
 			if err != nil {
 				errorhandler.SendErrorResponse(w, http.StatusUnauthorized, "Session is invalid or has expired. Please log in again.")
 				return
