@@ -2,7 +2,6 @@ package routes
 
 import (
 	"net/http"
-
 	"github.com/gorilla/mux"
 	"github.com/manishchauhan/dugguGo/models/adminModel"
 	"github.com/manishchauhan/dugguGo/servers/jsonResponse"

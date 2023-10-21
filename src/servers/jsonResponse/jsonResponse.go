@@ -9,10 +9,13 @@ import (
 )
 
 const (
-	UserRegistered   = "User registered successfully"
-	Methodnotallowed = "Method not allowed"
-	Errordecoding    = "Error decoding request body: "
-	DBinsertError    = "Error inserting user data: "
+	UserRegistered      = "User registered successfully"
+	Methodnotallowed    = "Method not allowed"
+	Errordecoding       = "Error decoding request body: "
+	DBinsertError       = "Error inserting data: "
+	RoomCreated         = "Room created successfully"
+	DeletedRoomsMessage = "successfully deleted selected rooms"
+	ChatRoomUpdated     = "chat room updated successfully"
 )
 
 type ResponseMessage struct {
