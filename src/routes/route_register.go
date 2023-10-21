@@ -8,4 +8,5 @@ import (
 func RegisterRoutes(r *mux.Router, dm *mysqlDbManager.DBManager) {
 	RegisterUserRoutes(r, dm)
 	RegisterAdminRoutes(r, dm)
+	RegisterRoomsRoutes(r, dm)
 }

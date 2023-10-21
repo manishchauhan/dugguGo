@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/manishchauhan/dugguGo/util/auth/jwtAuth"
 	"github.com/rs/cors"
@@ -33,7 +35,9 @@ func sendErrorMessage(conn *websocket.Conn, errorMsg string) error {
 }
 
 type IFMessage struct {
+	Time string `json:"time"`
 	Text string `json:"text"`
+	User string `json:"user"`
 }
 
 type WebSocketServer struct {
@@ -95,12 +99,14 @@ func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request
 			conn.Close()
 		}
 	}()
-
+	var messageObject IFMessage
 	//use refresh token to get user data starts___________________________________
 	refreshTokenCookieName := "refresh_token"
 	refreshToken, refreshTokenErr := r.Cookie(refreshTokenCookieName)
 	if refreshTokenErr != nil {
-		err = sendMessageToClient(conn, "Access token is invalid. Please log in again.")
+		messageObject.Text = "Access token is invalid. Please log in again."
+		messageObject.Time = getCurrentTime()
+		err = sendMessageToClient(conn, messageObject)
 		if err != nil {
 			fmt.Println("Error sending welcome message:", err)
 			return
@@ -109,7 +115,9 @@ func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request
 	}
 	claims, parseError := jwtAuth.ParseAndValidateToken(refreshToken.Value)
 	if parseError != nil {
-		err = sendMessageToClient(conn, "Access token is invalid. Please log in again.")
+		messageObject.Text = "Access token is invalid. Please log in again."
+		messageObject.Time = getCurrentTime()
+		err = sendMessageToClient(conn, messageObject)
 		if err != nil {
 			fmt.Println("Error sending welcome message:", err)
 			return
@@ -117,13 +125,18 @@ func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request
 		return
 	}
 	chatUserName := claims.UserName
-	err = sendMessageToClient(conn, "Welcome to chat room "+chatUserName)
+	messageObject.Text = "Welcome to the chat room " + chatUserName
+	messageObject.Time = getCurrentTime()
+	messageObject.User = chatUserName
+	err = sendMessageToClient(conn, messageObject)
 	if err != nil {
 		fmt.Println("Error sending welcome message:", err)
 		return
 	}
 	s.connectionsMu.Lock()
-	s.connections[chatUserName] = conn
+	//unique chat connection id
+	connectionId := uuid.New()
+	s.connections[connectionId.String()] = conn
 	s.connectionsMu.Unlock()
 	//use refresh token to get user data starts___________________________________
 
@@ -169,11 +182,17 @@ func (s *WebSocketServer) handleIncoming(wg *sync.WaitGroup, conn *websocket.Con
 
 func (s *WebSocketServer) handleOutgoing(wg *sync.WaitGroup, outgoingMessages <-chan []byte) {
 	defer wg.Done()
-	for msg := range outgoingMessages {
+	for msgByte := range outgoingMessages {
 		// Lock the mutex while iterating through the connections map
 		s.connectionsMu.Lock()
 		for _, conn := range s.connections {
-			err := sendMessageToClient(conn, string(msg))
+			var messageObject IFMessage
+			if err := json.Unmarshal(msgByte, &messageObject); err != nil {
+				fmt.Println("Error unmarshaling JSON:", err)
+			} else {
+				fmt.Printf("Received message: %+v\n", messageObject)
+			}
+			err := sendMessageToClient(conn, messageObject)
 			if err != nil {
 				fmt.Println("Error sending message:", err)
 				// Optionally, you might want to remove the connection from the map here
@@ -182,11 +201,15 @@ func (s *WebSocketServer) handleOutgoing(wg *sync.WaitGroup, outgoingMessages <-
 		s.connectionsMu.Unlock()
 	}
 }
-
-func sendMessageToClient(conn *websocket.Conn, message string) error {
-	msg := IFMessage{Text: message}
-
-	jsonData, err := json.Marshal(msg)
+func getCurrentTime() string {
+	// Get the current time
+	currentTime := time.Now()
+	// Format the current time as a string
+	return currentTime.Format("2006-01-02 15:04:05")
+}
+func sendMessageToClient(conn *websocket.Conn, messageObject IFMessage) error {
+	updatedMsgObject := IFMessage{Time: getCurrentTime(), Text: messageObject.Text, User: messageObject.User}
+	jsonData, err := json.Marshal(updatedMsgObject)
 	if err != nil {
 		return err
 	}
