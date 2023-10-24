@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/manishchauhan/dugguGo/util/auth/jwtAuth"
+
 	"github.com/rs/cors"
 )
 
@@ -41,10 +42,11 @@ type IFMessage struct {
 }
 
 type WebSocketServer struct {
-	upgrader      websocket.Upgrader
-	addr          string
-	connections   map[string]*websocket.Conn
-	connectionsMu sync.Mutex
+	upgrader            websocket.Upgrader
+	addr                string
+	connections         map[string]*websocket.Conn
+	connectionsMu       sync.Mutex
+	connectionsMuShared sync.RWMutex
 }
 
 func NewWebSocketServer(addr string) *WebSocketServer {
@@ -69,6 +71,36 @@ func (s *WebSocketServer) Start() error {
 	corsHandler := cors.Default().Handler(mux)
 	return http.ListenAndServe(s.addr, corsHandler)
 }
+func (s *WebSocketServer) removeClosedConnections() {
+	s.connectionsMu.Lock()
+	defer s.connectionsMu.Unlock()
+	for connectionKey, conn := range s.connections {
+		if conn != nil {
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+					// Handle unexpected close errors
+					fmt.Println("Unexpected error while handling connection:", err)
+				}
+				// Connection is closed, remove it from the map
+				delete(s.connections, connectionKey)
+			}
+		}
+	}
+}
+func (s *WebSocketServer) SendWelcomeMessageToAllClients(messageObject IFMessage) {
+	// First, remove any closed connections
+	s.removeClosedConnections()
+	s.connectionsMuShared.RLock()
+	defer s.connectionsMuShared.RUnlock()
+	for _, conn := range s.connections {
+		if conn != nil {
+			err := sendMessageToClient(conn, messageObject)
+			if err != nil {
+				fmt.Println("Error sending welcome message:", err)
+			}
+		}
+	}
+}
 
 func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := s.upgrader.Upgrade(w, r, nil)
@@ -77,28 +109,7 @@ func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request
 		sendErrorMessage(conn, "Error upgrading connection")
 		return
 	}
-	//remove connection when user disconnect it
-	defer func() {
-		// Remove the connection when a user disconnects
-		s.connectionsMu.Lock()
-		defer s.connectionsMu.Unlock()
 
-		// Find the username associated with the connection
-		var usernameToDelete string
-		for username, userConn := range s.connections {
-			if userConn == conn {
-				usernameToDelete = username
-				break
-			}
-		}
-		println(usernameToDelete + "hello")
-		// If a username is found, remove it from the map
-		if usernameToDelete != "" {
-			fmt.Printf("%s left the room\n", usernameToDelete)
-			delete(s.connections, usernameToDelete)
-			conn.Close()
-		}
-	}()
 	var messageObject IFMessage
 	//use refresh token to get user data starts___________________________________
 	refreshTokenCookieName := "refresh_token"
@@ -124,20 +135,30 @@ func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request
 		}
 		return
 	}
+
+	//unique chat connection take a Lock don't allow other thread to write it
+	s.connectionsMu.Lock()
+	connectionId := uuid.New()
+	s.connections[connectionId.String()] = conn
+	s.connectionsMu.Unlock()
+
+	fmt.Println("Size of the map:", len(s.connections)) // Print the size
+
 	chatUserName := claims.UserName
 	messageObject.Text = "Welcome to the chat room " + chatUserName
 	messageObject.Time = getCurrentTime()
 	messageObject.User = chatUserName
-	err = sendMessageToClient(conn, messageObject)
-	if err != nil {
-		fmt.Println("Error sending welcome message:", err)
-		return
-	}
-	s.connectionsMu.Lock()
-	//unique chat connection id
-	connectionId := uuid.New()
-	s.connections[connectionId.String()] = conn
-	s.connectionsMu.Unlock()
+	s.SendWelcomeMessageToAllClients(messageObject)
+	/* Testing purpose only */
+	/*
+		notificationManager := notification.GetNotifySystemInstance()
+		notificationManager.AddNotification("user", chatUserName)
+		notificationManager.ReceiveNotification("user", func(data interface{}) {
+			if stringValue, ok := data.(string); ok {
+				fmt.Printf("Received string notification: %s\n", stringValue)
+			}
+		})*/
+
 	//use refresh token to get user data starts___________________________________
 
 	incomingMessages := make(chan []byte)
@@ -190,7 +211,7 @@ func (s *WebSocketServer) handleOutgoing(wg *sync.WaitGroup, outgoingMessages <-
 			if err := json.Unmarshal(msgByte, &messageObject); err != nil {
 				fmt.Println("Error unmarshaling JSON:", err)
 			} else {
-				fmt.Printf("Received message: %+v\n", messageObject)
+				//fmt.Printf("Received message: %+v\n", messageObject)
 			}
 			err := sendMessageToClient(conn, messageObject)
 			if err != nil {
