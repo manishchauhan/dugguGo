@@ -19,7 +19,7 @@ func StartServer(port string, dm *mysqlDbManager.DBManager) {
 	allowedOrigins := []string{"http://localhost:3000", "http://192.168.29.216:3000"}
 	corsHandler := handlers.CORS(
 		handlers.AllowedOrigins(allowedOrigins), // Allow any origin
-		//dhandlers.AllowedOrigins([]string{"*"}),
+		//handlers.AllowedOrigins([]string{"*"}),
 		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
 		handlers.AllowedHeaders([]string{"Content-Type"}),
 		handlers.AllowCredentials(),

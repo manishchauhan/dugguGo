@@ -9,9 +9,29 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"github.com/manishchauhan/dugguGo/util/auth/jwtAuth"
 
 	"github.com/rs/cors"
+)
+
+/*
+Task done
+================================================================
+pending:-
+1. Remove a room and all its connection when Room is deleted at frontend
+2. Code refactor
+3. Change roomname to roomid as its helps to mantain connection when we edit room
+4. optimize connection and gorutines to handle more and more connection
+5. send user name active list-1
+6. one two one chat option-2
+*/
+type EnumMessageType int
+
+const (
+	TextMessage EnumMessageType = iota // simple message
+	JoinRoom                           // welcome message when user joins a channel
+	LeaveRoom                          //  message when user leaves a channel
+	Request                            //   request to join a channel
+
 )
 
 var upgrader = websocket.Upgrader{
@@ -36,17 +56,34 @@ func sendErrorMessage(conn *websocket.Conn, errorMsg string) error {
 }
 
 type IFMessage struct {
-	Time string `json:"time"`
-	Text string `json:"text"`
-	User string `json:"user"`
+	Time         string          `json:"time"`         //time of message
+	Text         string          `json:"text"`         //text
+	User         string          `json:"user"`         //user
+	RoomId       int             `json:"roomid"`       //Roomid
+	MessageType  EnumMessageType `json:"messagetype"`  //
+	ConnectionID string          `json:"connectionid"` //connection
 }
 
+// User List
+type IFChatUser struct {
+	ChatUser string
+	Conn     *websocket.Conn
+}
+
+// Room List
+type IFChatRoom struct {
+	RoomId   int
+	UserList map[string]IFChatUser
+}
 type WebSocketServer struct {
-	upgrader            websocket.Upgrader
-	addr                string
-	connections         map[string]*websocket.Conn
-	connectionsMu       sync.Mutex
-	connectionsMuShared sync.RWMutex
+	upgrader websocket.Upgrader
+	addr     string
+	//connections   map[string]*websocket.Conn
+	roomList             map[int]IFChatRoom //Room List
+	oneTwoOne            []IFChatUser       //One Two One Two
+	connectionsMu        sync.RWMutex
+	UserList             []string //all user List
+	SelectedConnectionId string
 }
 
 func NewWebSocketServer(addr string) *WebSocketServer {
@@ -58,9 +95,10 @@ func NewWebSocketServer(addr string) *WebSocketServer {
 		},
 	}
 	return &WebSocketServer{
-		upgrader:    upgrader,
-		addr:        addr,
-		connections: make(map[string]*websocket.Conn),
+		upgrader: upgrader,
+		addr:     addr,
+		UserList: make([]string, 0),
+		roomList: make(map[int]IFChatRoom),
 	}
 }
 
@@ -71,35 +109,81 @@ func (s *WebSocketServer) Start() error {
 	corsHandler := cors.Default().Handler(mux)
 	return http.ListenAndServe(s.addr, corsHandler)
 }
-func (s *WebSocketServer) removeClosedConnections() {
+
+// Check if connection is Already established and exits in map
+func (s *WebSocketServer) IsConnectionAlreadyExists(roomId int, connectionKey string) bool {
+	room, existsRoom := s.roomList[roomId]
+	if !existsRoom {
+		return false
+	}
+	_, existsConnection := room.UserList[connectionKey]
+	if existsConnection {
+		return true
+	}
+	return true
+}
+
+// Delete room and delete all connection realted to it
+func (s *WebSocketServer) deleteRoom(roomId int) {
+	_, exists := s.roomList[roomId]
+	if exists {
+		delete(s.roomList, roomId)
+	}
+}
+
+// Delete a connection
+func (s *WebSocketServer) deleteAndClosedConnection(roomId int, connectionKey string) bool {
+	room, exists := s.roomList[roomId]
+	if !exists {
+		return false
+	}
+	// Now, you can safely delete the connection
+	room.UserList[connectionKey].Conn.Close()
+	delete(room.UserList, connectionKey)
+	return true
+}
+func (s *WebSocketServer) removeClosedConnections(roomId int) {
 	s.connectionsMu.Lock()
 	defer s.connectionsMu.Unlock()
-	for connectionKey, conn := range s.connections {
-		if conn != nil {
-			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+	for connectionKey, chatRoom := range s.roomList[roomId].UserList {
+		Conn := chatRoom.Conn
+		if Conn != nil {
+			if err := Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 					// Handle unexpected close errors
 					fmt.Println("Unexpected error while handling connection:", err)
 				}
 				// Connection is closed, remove it from the map
-				delete(s.connections, connectionKey)
+				delete(s.roomList[roomId].UserList, connectionKey)
 			}
 		}
 	}
 }
-func (s *WebSocketServer) SendWelcomeMessageToAllClients(messageObject IFMessage) {
-	// First, remove any closed connections
-	s.removeClosedConnections()
-	s.connectionsMuShared.RLock()
-	defer s.connectionsMuShared.RUnlock()
-	for _, conn := range s.connections {
-		if conn != nil {
-			err := sendMessageToClient(conn, messageObject)
-			if err != nil {
-				fmt.Println("Error sending welcome message:", err)
-			}
-		}
+
+func (s *WebSocketServer) addNewChatRoom(roomId int, chatUserName string, conn *websocket.Conn) string {
+	// Generate a unique ID for the connection
+	connectionID := uuid.New()
+	connectionIDString := connectionID.String()
+
+	// Create a new ChatUser
+	chatUser := IFChatUser{
+		ChatUser: chatUserName,
+		Conn:     conn,
 	}
+	// Check if the chat room already exists
+	room, roomAlreadyExists := s.roomList[roomId]
+	if roomAlreadyExists {
+		// Add the chat user to the existing room
+		room.UserList[connectionIDString] = chatUser
+	} else {
+		// Create a new chat room and add the user
+		newRoom := IFChatRoom{
+			RoomId:   roomId,
+			UserList: map[string]IFChatUser{connectionIDString: chatUser},
+		}
+		s.roomList[roomId] = newRoom
+	}
+	return connectionIDString
 }
 
 func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -109,58 +193,6 @@ func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request
 		sendErrorMessage(conn, "Error upgrading connection")
 		return
 	}
-
-	var messageObject IFMessage
-	//use refresh token to get user data starts___________________________________
-	refreshTokenCookieName := "refresh_token"
-	refreshToken, refreshTokenErr := r.Cookie(refreshTokenCookieName)
-	if refreshTokenErr != nil {
-		messageObject.Text = "Access token is invalid. Please log in again."
-		messageObject.Time = getCurrentTime()
-		err = sendMessageToClient(conn, messageObject)
-		if err != nil {
-			fmt.Println("Error sending welcome message:", err)
-			return
-		}
-		return
-	}
-	claims, parseError := jwtAuth.ParseAndValidateToken(refreshToken.Value)
-	if parseError != nil {
-		messageObject.Text = "Access token is invalid. Please log in again."
-		messageObject.Time = getCurrentTime()
-		err = sendMessageToClient(conn, messageObject)
-		if err != nil {
-			fmt.Println("Error sending welcome message:", err)
-			return
-		}
-		return
-	}
-
-	//unique chat connection take a Lock don't allow other thread to write it
-	s.connectionsMu.Lock()
-	connectionId := uuid.New()
-	s.connections[connectionId.String()] = conn
-	s.connectionsMu.Unlock()
-
-	fmt.Println("Size of the map:", len(s.connections)) // Print the size
-
-	chatUserName := claims.UserName
-	messageObject.Text = "Welcome to the chat room " + chatUserName
-	messageObject.Time = getCurrentTime()
-	messageObject.User = chatUserName
-	s.SendWelcomeMessageToAllClients(messageObject)
-	/* Testing purpose only */
-	/*
-		notificationManager := notification.GetNotifySystemInstance()
-		notificationManager.AddNotification("user", chatUserName)
-		notificationManager.ReceiveNotification("user", func(data interface{}) {
-			if stringValue, ok := data.(string); ok {
-				fmt.Printf("Received string notification: %s\n", stringValue)
-			}
-		})*/
-
-	//use refresh token to get user data starts___________________________________
-
 	incomingMessages := make(chan []byte)
 	outgoingMessages := make(chan []byte)
 
@@ -183,14 +215,38 @@ func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request
 func (s *WebSocketServer) handleIncoming(wg *sync.WaitGroup, conn *websocket.Conn, incomingMessages chan<- []byte, outgoingMessages chan<- []byte) {
 	defer wg.Done()
 	for {
+
 		_, p, err := conn.ReadMessage()
+		var messageObject IFMessage
 		if err != nil {
 			fmt.Println("Error reading message:", err)
 			sendErrorMessage(conn, "Error reading message")
 			return
 		}
-		fmt.Println("Received message from client:", string(p))
+		json.Unmarshal(p, &messageObject)
+		// check message type
 
+		switch messageObject.MessageType {
+		case TextMessage:
+			s.connectionsMu.Lock()
+			if messageObject.ConnectionID != "" {
+				s.SelectedConnectionId = messageObject.ConnectionID
+			}
+			s.connectionsMu.Unlock()
+			break
+		case JoinRoom:
+			s.connectionsMu.Lock()
+			s.SelectedConnectionId = s.addNewChatRoom(messageObject.RoomId, messageObject.User, conn)
+			s.connectionsMu.Unlock()
+			break
+		case LeaveRoom:
+			s.connectionsMu.Lock() //  message when user leaves a channel
+			s.deleteRoom(messageObject.RoomId)
+			s.connectionsMu.Unlock()
+			continue
+		default:
+			break
+		}
 		// Send incoming message to outgoingMessages channel
 		select {
 		case outgoingMessages <- p:
@@ -206,14 +262,14 @@ func (s *WebSocketServer) handleOutgoing(wg *sync.WaitGroup, outgoingMessages <-
 	for msgByte := range outgoingMessages {
 		// Lock the mutex while iterating through the connections map
 		s.connectionsMu.Lock()
-		for _, conn := range s.connections {
-			var messageObject IFMessage
-			if err := json.Unmarshal(msgByte, &messageObject); err != nil {
-				fmt.Println("Error unmarshaling JSON:", err)
-			} else {
-				//fmt.Printf("Received message: %+v\n", messageObject)
-			}
-			err := sendMessageToClient(conn, messageObject)
+		var messageObject IFMessage
+		if err := json.Unmarshal(msgByte, &messageObject); err != nil {
+			fmt.Println("Error unmarshaling JSON:", err)
+		} else {
+			//fmt.Printf("Received message: %+v\n", messageObject)
+		}
+		for _, chatRoom := range s.roomList[messageObject.RoomId].UserList {
+			err := sendMessageToClient(chatRoom.Conn, messageObject, s.SelectedConnectionId)
 			if err != nil {
 				fmt.Println("Error sending message:", err)
 				// Optionally, you might want to remove the connection from the map here
@@ -228,17 +284,16 @@ func getCurrentTime() string {
 	// Format the current time as a string
 	return currentTime.Format("2006-01-02 15:04:05")
 }
-func sendMessageToClient(conn *websocket.Conn, messageObject IFMessage) error {
-	updatedMsgObject := IFMessage{Time: getCurrentTime(), Text: messageObject.Text, User: messageObject.User}
+func sendMessageToClient(conn *websocket.Conn, messageObject IFMessage, SelectedConnectionId string) error {
+	updatedMsgObject := IFMessage{ConnectionID: SelectedConnectionId, MessageType: messageObject.MessageType, Time: getCurrentTime(), Text: messageObject.Text, User: messageObject.User, RoomId: messageObject.RoomId}
 	jsonData, err := json.Marshal(updatedMsgObject)
 	if err != nil {
 		return err
 	}
-
+	//fmt.Println("messageObject.RoomName", conn)
 	err = conn.WriteMessage(websocket.TextMessage, jsonData)
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
