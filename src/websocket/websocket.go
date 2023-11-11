@@ -75,6 +75,7 @@ type IFChatRoom struct {
 	RoomId   int
 	UserList map[string]IFChatUser
 }
+
 type WebSocketServer struct {
 	upgrader websocket.Upgrader
 	addr     string
