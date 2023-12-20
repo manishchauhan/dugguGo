@@ -19,8 +19,10 @@ func RegisterRoomsRoutes(router *mux.Router, dm *mysqlDbManager.DBManager) {
 	subrouter.Handle("/add", jwtAuth.AuthMiddleware(http.HandlerFunc(addRoom(dm)))).Methods("POST")  //add new room
 	subrouter.Handle("/list", jwtAuth.AuthMiddleware(http.HandlerFunc(getRooms(dm)))).Methods("GET") //add new room
 	subrouter.HandleFunc("/delete", deleteRooms(dm)).Methods("POST")                                 //multiple rooms can be deleted or only one can be deleted
-	subrouter.HandleFunc("/edit", editRoom(dm)).Methods("POST")                                      //based on the room id
+	subrouter.HandleFunc("/edit", editRoom(dm)).Methods("POST")
+	subrouter.HandleFunc("/edit", editRoom(dm)).Methods("POST") //based on the room id
 	//subrouter.HandleFunc("/select", selectRooms(dm)).Methods("POST")' //based on the room id
+
 }
 
 // edit already exits room
