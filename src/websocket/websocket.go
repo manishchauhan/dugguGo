@@ -16,6 +16,13 @@ import (
 /*
 Task done
 ================================================================
+//next video and audio call - next target
+//aws task
+//share html
+//share format text
+//share images and videos (all formats) //mutiple videos
+//share hyperlinks
+
 pending:-
 1. Remove a room and all its connection when Room is deleted at frontend
 2. Code refactor
@@ -27,11 +34,11 @@ pending:-
 type EnumMessageType int
 
 const (
-	TextMessage EnumMessageType = iota // simple message
-	JoinRoom                           // welcome message when user joins a channel
-	LeaveRoom                          //  message when user leaves a channel
-	Request                            //   request to join a channel
-
+	TextMessage  EnumMessageType = iota // simple message
+	JoinRoom                            // welcome message when user joins a channel
+	LeaveRoom                           //  message when user leaves a channel
+	Request                             //   request to join a channel
+	videoRequest                        // video call
 )
 
 var upgrader = websocket.Upgrader{
@@ -85,6 +92,7 @@ type WebSocketServer struct {
 	connectionsMu        sync.RWMutex
 	UserList             []string //all user List
 	SelectedConnectionId string
+	//webRTCInstance       *webrtc.WebRTC
 }
 
 func NewWebSocketServer(addr string) *WebSocketServer {
@@ -194,6 +202,8 @@ func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request
 		sendErrorMessage(conn, "Error upgrading connection")
 		return
 	}
+	/*if handshake happen successfully, start a new instance of webrtc only one instance is enough*/
+	//s.webRTCInstance = webrtc.NewWebRTC()
 	incomingMessages := make(chan []byte)
 	outgoingMessages := make(chan []byte)
 
@@ -212,7 +222,9 @@ func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request
 	close(incomingMessages)
 	close(outgoingMessages)
 }
-
+func (s *WebSocketServer) startVideoConference() {
+	//s.webRTCInstance.AddNewPeerConnection()
+}
 func (s *WebSocketServer) handleIncoming(wg *sync.WaitGroup, conn *websocket.Conn, incomingMessages chan<- []byte, outgoingMessages chan<- []byte) {
 	defer wg.Done()
 	for {
@@ -245,6 +257,8 @@ func (s *WebSocketServer) handleIncoming(wg *sync.WaitGroup, conn *websocket.Con
 			s.deleteRoom(messageObject.RoomId)
 			s.connectionsMu.Unlock()
 			continue
+		case videoRequest:
+			//s.startVideoConference()
 		default:
 			break
 		}
