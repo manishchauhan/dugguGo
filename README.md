@@ -24,4 +24,6 @@ DATABASE_KEY="root:manish@tcp(127.0.0.1:3306)/chatmsg"
 How to use this
 --------------------------------
 git clone https://github.com/manishchauhan/dugguGo.git
+also import chatmsg.mwb to your mysql database
+all connection setting in env file
 go run main.go 
