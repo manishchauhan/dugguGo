@@ -1,3 +1,5 @@
+Scalable chat application server using MySQL, WebSocket and Go 
+
 Task to be done (Month1)
   1. Mysql connection pool (reusability) done
   2. CRUD operation  (reusability) done
@@ -11,6 +13,7 @@ Task to be done (Month1)
   9. adapter pattern (reusability)
   10. jenkins pipeline
   11. Task to be done (Month2)
+
   12. room based chat done (normal + emoji message done)
   13. webrtc based video and audio boardcasting room (done)
   14. ui client based on react done
@@ -19,6 +22,7 @@ Task to be done (Month1)
   17. screensharing need to be implemented
   18. optimization and performance need to be implemented 
 DATABASE_KEY="root:manish@tcp(127.0.0.1:3306)/chatmsg"
+
 
 
 How to use this
