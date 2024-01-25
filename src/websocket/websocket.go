@@ -40,9 +40,10 @@ const (
 	LeaveRoom                                    //  message when user leaves a channel
 	Request                                      //   request to join a channel
 	VideoCall
-	Candidate // Sdpoffer
-	Offer     //Offer
-	Answer    //Answer
+	Candidate     // Sdpoffer
+	Offer         //Offer
+	Answer        //Answer
+	DeleteChannel // delete a channel webrtc
 )
 
 var upgrader = websocket.Upgrader{
@@ -99,6 +100,9 @@ func (s *WebSocketServer) Start() error {
 	mux.HandleFunc("/ws", s.HandleWebSocket)
 	fmt.Printf("WebSocket server listening on %s\n", s.addr)
 	corsHandler := cors.Default().Handler(mux)
+	if s.webRTCInstance == nil {
+		s.webRTCInstance = webrtcServer.NewWebRTCManager()
+	}
 	return http.ListenAndServe(s.addr, corsHandler)
 }
 
@@ -189,9 +193,7 @@ func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request
 
 	// If handshake happens successfully, start a new instance of WebRTC.
 	// Only one instance is enough, so you might want to check if s.webRTCInstance is already set.
-	if s.webRTCInstance == nil {
-		s.webRTCInstance = webrtcServer.NewWebRTCManager()
-	}
+
 	incomingMessages := make(chan []byte)
 	outgoingMessages := make(chan []byte)
 
@@ -214,7 +216,8 @@ func (s *WebSocketServer) startVideoConference(websocketMessage *roomModel.IFWeb
 
 	room, roomAlreadyExists := s.roomList[websocketMessage.RoomId]
 	if roomAlreadyExists {
-		s.webRTCInstance.SetupReceiversAndAssignConnections(websocketMessage, room, s.SelectedConnectionId, threadSafeWriter)
+
+		s.webRTCInstance.SetupReceiversAndAssignConnections(websocketMessage, room, threadSafeWriter)
 		return true
 	}
 	return false
@@ -251,9 +254,7 @@ func (s *WebSocketServer) handleIncoming(wg *sync.WaitGroup, threadSafeWriter *r
 				log.Println(err)
 				return
 			}
-			if messageObject.ConnectionID != "" {
-				s.SelectedConnectionId = messageObject.ConnectionID
-			}
+
 			s.connectionsMu.Unlock()
 			break
 		case JoinRoom:
@@ -265,6 +266,7 @@ func (s *WebSocketServer) handleIncoming(wg *sync.WaitGroup, threadSafeWriter *r
 				return
 			}
 			s.SelectedConnectionId = s.addNewChatRoom(websocketMessage.RoomId, websocketMessage.User, threadSafeWriter)
+
 			s.connectionsMu.Unlock()
 			break
 		case LeaveRoom:
@@ -279,17 +281,20 @@ func (s *WebSocketServer) handleIncoming(wg *sync.WaitGroup, threadSafeWriter *r
 			continue
 		case VideoCall:
 			s.startVideoConference(websocketMessage, threadSafeWriter)
-			break
+			continue
 		case Candidate:
 			if s.webRTCInstance != nil {
-				s.webRTCInstance.SendMessageToWebRTCChannel(raw, Candidate)
+				s.webRTCInstance.AddICECandidate([]byte(websocketMessage.Data), websocketMessage.RoomId, websocketMessage.RTCPeerID)
 			}
-			break
+
+			continue
 		case Answer:
 			if s.webRTCInstance != nil {
-				s.webRTCInstance.SendMessageToWebRTCChannel(raw, Answer)
+
+				s.webRTCInstance.SetRemoteDescription([]byte(websocketMessage.Data), websocketMessage.RoomId, websocketMessage.RTCPeerID)
 			}
-			break
+
+			continue
 		default:
 			break
 		}
@@ -304,18 +309,21 @@ func (s *WebSocketServer) handleIncoming(wg *sync.WaitGroup, threadSafeWriter *r
 }
 
 func (s *WebSocketServer) handleOutgoing(wg *sync.WaitGroup, outgoingMessages <-chan []byte) {
+
 	defer wg.Done()
+
 	for msgByte := range outgoingMessages {
 		// Lock the mutex while iterating through the connections map
 		s.connectionsMu.Lock()
-		var messageObject roomModel.IFWebsocketMessage
+		messageObject := roomModel.IFWebsocketMessage{}
 		messageObject.Time = getCurrentTime()
+
 		if err := json.Unmarshal(msgByte, &messageObject); err != nil {
 			fmt.Println("Error unmarshaling JSON:", err)
 			continue // Skip to the next message if unmarshaling fails
 		}
 		for _, chatRoom := range s.roomList[messageObject.RoomId].UserList {
-			err := sendMessageToClient(chatRoom.Conn, messageObject)
+			err := s.sendMessageToClient(chatRoom.Conn, &messageObject, s.SelectedConnectionId)
 			if err != nil {
 				fmt.Println("Error sending message:", err)
 				// Optionally, you might want to remove the connection from the map here
@@ -330,7 +338,10 @@ func getCurrentTime() string {
 	// Format the current time as a string
 	return currentTime.Format("2006-01-02 15:04:05")
 }
-func sendMessageToClient(threadSafeWriter *roomModel.ThreadSafeWriter, messageObject roomModel.IFWebsocketMessage) error {
+func (s *WebSocketServer) sendMessageToClient(threadSafeWriter *roomModel.ThreadSafeWriter, messageObject *roomModel.IFWebsocketMessage, SelectedConnectionId string) error {
+	threadSafeWriter.Lock()
+	defer threadSafeWriter.Unlock()
+	messageObject.ConnectionID = SelectedConnectionId
 	err := threadSafeWriter.Conn.WriteJSON(messageObject)
 	if err != nil {
 		return err
