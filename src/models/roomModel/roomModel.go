@@ -18,8 +18,8 @@ type IFSdp struct {
 	Sdp string `json:"sdp"`
 }
 type IFMessage struct {
-	Content      interface{} `json:"content,omitempty"` //any type of content
-	ConnectionID string      `json:"connectionid"`      // connection
+	Content interface{} `json:"content,omitempty"` //any type of content
+
 }
 type IFWebRtcMessage struct {
 	Candidate webrtc.ICECandidateInit   `json:"candidate,omitempty"` //
@@ -32,11 +32,14 @@ type IFVideoParticipant struct {
 	RoomId      int             `json:"roomid,omitempty"` // Roomid
 }
 type IFWebsocketMessage struct {
-	Time        string          `json:"time,omitempty"` // time of message
-	MessageType EnumMessageType `json:"messagetype"`
-	User        string          `json:"user,omitempty"`   // user
-	RoomId      int             `json:"roomid,omitempty"` // Roomid
-	Data        string          `json:"data"`
+	Time         string          `json:"time,omitempty"` // time of message
+	MessageType  EnumMessageType `json:"messagetype"`
+	User         string          `json:"user,omitempty"`   // user
+	RoomId       int             `json:"roomid,omitempty"` // Roomid
+	Data         string          `json:"data"`
+	ConnectionID string          `json:"connectionid"` // connection
+	RTCPeerID    string          `json:"rtcpeerid"`    //
+
 }
 
 // User List
@@ -59,4 +62,5 @@ type ThreadSafeWriter struct {
 type PeerConnectionState struct {
 	PeerConnection *webrtc.PeerConnection
 	Websocket      *ThreadSafeWriter
+	RTCPeerID      string
 }
