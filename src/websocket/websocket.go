@@ -293,7 +293,11 @@ func (s *WebSocketServer) handleIncoming(wg *sync.WaitGroup, threadSafeWriter *r
 
 				s.webRTCInstance.SetRemoteDescription([]byte(websocketMessage.Data), websocketMessage.RoomId, websocketMessage.RTCPeerID)
 			}
-
+			continue
+		case DeleteChannel:
+			if s.webRTCInstance != nil {
+				s.webRTCInstance.DeleteChannel(websocketMessage.RoomId, websocketMessage.RTCPeerID, threadSafeWriter)
+			}
 			continue
 		default:
 			break

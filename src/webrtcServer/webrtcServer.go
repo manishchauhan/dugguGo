@@ -261,11 +261,11 @@ func (w *WebRTCManager) SetupReceiversAndAssignConnections(websocketMessage *roo
 	}
 	w.channels[chatRoom.RoomId] = channel
 	w.lock.Unlock()
-	length1 := len(w.channels[chatRoom.RoomId].peerConnections)
-	length2 := len(w.channels[chatRoom.RoomId].trackLocals)
-	fmt.Println("id........", RTCPeerID)
-	fmt.Println("peerConnections........", length1)
-	fmt.Println("trackLocals........", length2)
+	//length1 := len(w.channels[chatRoom.RoomId].peerConnections)
+	//length2 := len(w.channels[chatRoom.RoomId].trackLocals)
+	fmt.Println("id........", w.channels)
+	//fmt.Println("peerConnections........", length1)
+	//fmt.Println("trackLocals........", length2)
 	//OnICECandidate
 	peerConnection.OnICECandidate(func(ice *webrtc.ICECandidate) {
 		if ice == nil {
@@ -322,8 +322,9 @@ func (w *WebRTCManager) SetupReceiversAndAssignConnections(websocketMessage *roo
 	//println("122----", peerConnection)
 	//println("122----", peerConnection)
 }
+
 func (w *WebRTCManager) AddICECandidate(msgData []byte, roomid int, RTCPeerID string) {
-	fmt.Println("RTCPeerCandidate", RTCPeerID)
+	//fmt.Println("RTCPeerCandidate", RTCPeerID)
 	candidate := webrtc.ICECandidateInit{}
 	if err := json.Unmarshal([]byte(msgData), &candidate); err != nil {
 		log.Println(err)
@@ -331,15 +332,27 @@ func (w *WebRTCManager) AddICECandidate(msgData []byte, roomid int, RTCPeerID st
 	}
 	channel, exists := w.channels[roomid]
 	if exists {
-		if err := channel.peerConnections[RTCPeerID].PeerConnection.AddICECandidate(candidate); err != nil {
-			log.Println("Candidate", err)
+		rtcChannel, rtcExists := channel.peerConnections[RTCPeerID]
+		if rtcExists {
+			// Check if remote description is set before adding ICE candidate
+			if rtcChannel.PeerConnection.RemoteDescription() == nil {
+				//log.Println("Remote description is not set. Cannot add ICE candidate.")
+				return
+			}
+
+			if err := rtcChannel.PeerConnection.AddICECandidate(candidate); err != nil {
+				//log.Println("Candidate", err)
+				return
+			}
+		} else {
+			//log.Println("PeerConnection not found for RTCPeerID:", RTCPeerID)
 			return
 		}
 	}
 }
 
 func (w *WebRTCManager) SetRemoteDescription(msgData []byte, roomid int, RTCPeerID string) {
-	fmt.Println("RTCPeerIDAnswer", RTCPeerID)
+	//fmt.Println("RTCPeerIDAnswer", RTCPeerID)
 	answer := webrtc.SessionDescription{}
 	if err := json.Unmarshal([]byte(msgData), &answer); err != nil {
 		log.Println(err)
@@ -347,13 +360,16 @@ func (w *WebRTCManager) SetRemoteDescription(msgData []byte, roomid int, RTCPeer
 	}
 	channel, exists := w.channels[roomid]
 	if exists {
-		rtcChannel := channel.peerConnections[RTCPeerID]
-		if err := rtcChannel.PeerConnection.SetRemoteDescription(answer); err != nil {
-			log.Println("Answer", err)
+		rtcChannel, rtcExists := channel.peerConnections[RTCPeerID]
+		if rtcExists {
+			if err := rtcChannel.PeerConnection.SetRemoteDescription(answer); err != nil {
+				log.Println("Answer", err)
+				return
+			}
+		} else {
 			return
 		}
 	}
-
 }
 
 func (w *WebRTCManager) WriteJSON(threadSafeWriter *roomModel.ThreadSafeWriter, v interface{}) error {
@@ -362,9 +378,46 @@ func (w *WebRTCManager) WriteJSON(threadSafeWriter *roomModel.ThreadSafeWriter, 
 	return threadSafeWriter.Conn.WriteJSON(v)
 }
 
-// remove a channel from channel list when user close a room
-func (w *WebRTCManager) DeleteChannel(roomId int) {
-	if _, exists := w.channels[roomId]; exists {
-		delete(w.channels, roomId)
+// DeleteChannel removes a channel from the channel list when a user closes a room
+// DeleteChannel removes a channel from the channel list when a user closes a room
+func (w *WebRTCManager) DeleteChannel(roomId int, RTCPeerID string, threadSafeWriter *roomModel.ThreadSafeWriter) {
+	w.lock.Lock()
+	defer w.lock.Unlock()
+
+	// Check if the channel exists
+	channel, exists := w.channels[roomId]
+	if !exists {
+		log.Println("Channel not found for room ID:", roomId)
+		return
 	}
+
+	// Check if the RTCPeerID exists in the peerConnections map
+	connectionState, exists := channel.peerConnections[RTCPeerID]
+	if !exists {
+		log.Println("RTCPeerID not found in channel:", RTCPeerID)
+		return
+	}
+
+	// Close the PeerConnection and stop tracks
+	if err := connectionState.PeerConnection.Close(); err != nil {
+		log.Println("Error closing RTCPeerConnection:", err)
+	} else {
+		for _, transceiver := range connectionState.PeerConnection.GetTransceivers() {
+			if transceiver.Sender() != nil && transceiver.Sender().Track() != nil {
+				transceiver.Sender().Stop()
+			}
+		}
+
+	}
+
+	// Notify clients about the deleted connection
+	if err := w.WriteJSON(threadSafeWriter, &roomModel.IFWebsocketMessage{
+		MessageType: DeleteChannel,
+		// You may want to send additional information here
+	}); err != nil {
+		log.Println("Error sending websocket message:", err)
+	}
+
+	// Perform additional cleanup or signaling
+	w.signalPeerConnections(roomId)
 }
