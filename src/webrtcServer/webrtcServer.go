@@ -354,7 +354,7 @@ func (w *WebRTCManager) AddICECandidate(msgData []byte, roomid int, RTCPeerID st
 }
 
 func (w *WebRTCManager) SetRemoteDescription(msgData []byte, roomid int, RTCPeerID string) {
-	//fmt.Println("RTCPeerIDAnswer", RTCPeerID)
+
 	answer := webrtc.SessionDescription{}
 	if err := json.Unmarshal([]byte(msgData), &answer); err != nil {
 		log.Println(err)
@@ -368,6 +368,7 @@ func (w *WebRTCManager) SetRemoteDescription(msgData []byte, roomid int, RTCPeer
 				log.Println("Answer", err)
 				return
 			}
+
 		} else {
 			return
 		}
