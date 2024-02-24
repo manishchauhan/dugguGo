@@ -263,7 +263,7 @@ func (w *WebRTCManager) SetupReceiversAndAssignConnections(websocketMessage *roo
 	w.lock.Unlock()
 	//length1 := len(w.channels[chatRoom.RoomId].peerConnections)
 	//length2 := len(w.channels[chatRoom.RoomId].trackLocals)
-	fmt.Println("id........", w.channels)
+
 	//fmt.Println("peerConnections........", length1)
 	//fmt.Println("trackLocals........", length2)
 	//OnICECandidate
@@ -318,6 +318,8 @@ func (w *WebRTCManager) SetupReceiversAndAssignConnections(websocketMessage *roo
 	})
 	//println("1----", peerConnection)
 	// Signal for the new PeerConnection
+	fmt.Println("Print it", channel.peerConnections)
+	fmt.Println("Print it", channel.trackLocals)
 	w.signalPeerConnections(chatRoom.RoomId)
 	//println("122----", peerConnection)
 	//println("122----", peerConnection)
@@ -352,7 +354,7 @@ func (w *WebRTCManager) AddICECandidate(msgData []byte, roomid int, RTCPeerID st
 }
 
 func (w *WebRTCManager) SetRemoteDescription(msgData []byte, roomid int, RTCPeerID string) {
-	//fmt.Println("RTCPeerIDAnswer", RTCPeerID)
+
 	answer := webrtc.SessionDescription{}
 	if err := json.Unmarshal([]byte(msgData), &answer); err != nil {
 		log.Println(err)
@@ -366,6 +368,7 @@ func (w *WebRTCManager) SetRemoteDescription(msgData []byte, roomid int, RTCPeer
 				log.Println("Answer", err)
 				return
 			}
+
 		} else {
 			return
 		}
@@ -381,8 +384,6 @@ func (w *WebRTCManager) WriteJSON(threadSafeWriter *roomModel.ThreadSafeWriter, 
 // DeleteChannel removes a channel from the channel list when a user closes a room
 // DeleteChannel removes a channel from the channel list when a user closes a room
 func (w *WebRTCManager) DeleteChannel(roomId int, RTCPeerID string, threadSafeWriter *roomModel.ThreadSafeWriter) {
-	w.lock.Lock()
-	defer w.lock.Unlock()
 
 	// Check if the channel exists
 	channel, exists := w.channels[roomId]
@@ -407,17 +408,18 @@ func (w *WebRTCManager) DeleteChannel(roomId int, RTCPeerID string, threadSafeWr
 				transceiver.Sender().Stop()
 			}
 		}
-
+		w.lock.Lock()
+		delete(channel.peerConnections, RTCPeerID)
+		delete(channel.trackLocals, RTCPeerID)
+		w.lock.Unlock()
+		fmt.Println("Print it", channel.peerConnections)
+		fmt.Println("Print it", channel.trackLocals)
+		// Notify clients about the deleted connection
+		if err := w.WriteJSON(threadSafeWriter, &roomModel.IFWebsocketMessage{
+			MessageType: DeleteChannel,
+			// You may want to send additional information here
+		}); err != nil {
+			log.Println("Error sending websocket message:", err)
+		}
 	}
-
-	// Notify clients about the deleted connection
-	if err := w.WriteJSON(threadSafeWriter, &roomModel.IFWebsocketMessage{
-		MessageType: DeleteChannel,
-		// You may want to send additional information here
-	}); err != nil {
-		log.Println("Error sending websocket message:", err)
-	}
-
-	// Perform additional cleanup or signaling
-	w.signalPeerConnections(roomId)
 }
