@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/manishchauhan/dugguGo/servers/errorhandler"
 	"github.com/manishchauhan/dugguGo/servers/jsonResponse"
 	"github.com/manishchauhan/dugguGo/util/auth/jwtAuth"
+	"github.com/manishchauhan/dugguGo/util/cache"
 	"github.com/manishchauhan/dugguGo/util/mysqlDbManager"
 )
 
@@ -18,7 +20,8 @@ func RegisterRoomsRoutes(router *mux.Router, dm *mysqlDbManager.DBManager) {
 	subrouter := router.PathPrefix("/chatrooms").Subrouter()
 	subrouter.Handle("/add", jwtAuth.AuthMiddleware(http.HandlerFunc(addRoom(dm)))).Methods("POST")  //add new room
 	subrouter.Handle("/list", jwtAuth.AuthMiddleware(http.HandlerFunc(getRooms(dm)))).Methods("GET") //add new room
-	subrouter.HandleFunc("/delete", deleteRooms(dm)).Methods("POST")                                 //multiple rooms can be deleted or only one can be deleted
+	subrouter.Handle("/cache", jwtAuth.AuthMiddleware(http.HandlerFunc(getCacheFromRedis()))).Methods("GET")
+	subrouter.HandleFunc("/delete", deleteRooms(dm)).Methods("POST") //multiple rooms can be deleted or only one can be deleted
 	subrouter.HandleFunc("/edit", editRoom(dm)).Methods("POST")
 	subrouter.HandleFunc("/edit", editRoom(dm)).Methods("POST") //based on the room id
 	//subrouter.HandleFunc("/select", selectRooms(dm)).Methods("POST")' //based on the room id
@@ -179,6 +182,29 @@ func getRooms(dm *mysqlDbManager.DBManager) http.HandlerFunc {
 
 		if jsonErr := jsonResponse.WriteJSONResponse(w, http.StatusOK, allRooms); jsonErr != nil {
 			errorhandler.SendErrorResponse(w, http.StatusInternalServerError, "JSON response error")
+			return
+		}
+	}
+}
+
+// fecth message from cache
+func getCacheFromRedis() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		roomIDStr := r.URL.Query().Get("roomID")
+		redisClient, ok := cache.GetRedisClient("chatCache")
+		if ok {
+			ctx := context.Background()
+			messageHistory, err := redisClient.GetDataFromRedisStream(ctx, roomIDStr)
+			if err != nil {
+				errorhandler.SendErrorResponse(w, http.StatusInternalServerError, "Something went wrong with redis stream")
+				return
+			}
+			if jsonErr := jsonResponse.WriteJSONResponse(w, http.StatusOK, messageHistory); jsonErr != nil {
+				errorhandler.SendErrorResponse(w, http.StatusInternalServerError, "JSON response error")
+				return
+			}
+		} else {
+			errorhandler.SendErrorResponse(w, http.StatusInternalServerError, "redis cache not not working")
 			return
 		}
 	}
