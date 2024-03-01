@@ -149,6 +149,7 @@ func (w *WebRTCManager) signalPeerConnections(roomid int) {
 				}
 
 				offer, err := Connection.PeerConnection.CreateOffer(nil)
+
 				if err != nil {
 					return true
 				}
@@ -291,10 +292,12 @@ func (w *WebRTCManager) SetupReceiversAndAssignConnections(websocketMessage *roo
 	peerConnection.OnConnectionStateChange(func(p webrtc.PeerConnectionState) {
 		switch p {
 		case webrtc.PeerConnectionStateFailed:
+
 			if err := peerConnection.Close(); err != nil {
 				log.Print(err)
 			}
 		case webrtc.PeerConnectionStateClosed:
+
 			w.signalPeerConnections(chatRoom.RoomId)
 		default:
 		}
@@ -318,8 +321,8 @@ func (w *WebRTCManager) SetupReceiversAndAssignConnections(websocketMessage *roo
 	})
 	//println("1----", peerConnection)
 	// Signal for the new PeerConnection
-	fmt.Println("Print it", channel.peerConnections)
-	fmt.Println("Print it", channel.trackLocals)
+	//	fmt.Println("Print it", channel.peerConnections)
+	//	fmt.Println("Print it", channel.trackLocals)
 	w.signalPeerConnections(chatRoom.RoomId)
 	//println("122----", peerConnection)
 	//println("122----", peerConnection)
@@ -356,6 +359,7 @@ func (w *WebRTCManager) AddICECandidate(msgData []byte, roomid int, RTCPeerID st
 func (w *WebRTCManager) SetRemoteDescription(msgData []byte, roomid int, RTCPeerID string) {
 
 	answer := webrtc.SessionDescription{}
+
 	if err := json.Unmarshal([]byte(msgData), &answer); err != nil {
 		log.Println(err)
 		return
@@ -403,17 +407,15 @@ func (w *WebRTCManager) DeleteChannel(roomId int, RTCPeerID string, threadSafeWr
 	if err := connectionState.PeerConnection.Close(); err != nil {
 		log.Println("Error closing RTCPeerConnection:", err)
 	} else {
-		for _, transceiver := range connectionState.PeerConnection.GetTransceivers() {
-			if transceiver.Sender() != nil && transceiver.Sender().Track() != nil {
-				transceiver.Sender().Stop()
-			}
-		}
-		w.lock.Lock()
-		delete(channel.peerConnections, RTCPeerID)
-		delete(channel.trackLocals, RTCPeerID)
-		w.lock.Unlock()
+		/*
+			for _, transceiver := range connectionState.PeerConnection.GetTransceivers() {
+				if transceiver.Sender() != nil && transceiver.Sender().Track() != nil {
+					transceiver.Sender().Stop()
+				}
+			}*/
+		w.signalPeerConnections(roomId)
 		fmt.Println("Print it", channel.peerConnections)
-		fmt.Println("Print it", channel.trackLocals)
+		//fmt.Println("Print it", channel.trackLocals)
 		// Notify clients about the deleted connection
 		if err := w.WriteJSON(threadSafeWriter, &roomModel.IFWebsocketMessage{
 			MessageType: DeleteChannel,

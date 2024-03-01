@@ -1,16 +1,19 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/manishchauhan/dugguGo/models/roomModel"
+	"github.com/manishchauhan/dugguGo/util/cache"
 	"github.com/manishchauhan/dugguGo/webrtcServer"
 	"github.com/rs/cors"
 )
@@ -77,6 +80,8 @@ type WebSocketServer struct {
 	UserList             []string //all user List
 	SelectedConnectionId string
 	webRTCInstance       *webrtcServer.WebRTCManager
+	////////////////////////////////redis instance
+	redisInstance *cache.RedisClient
 }
 
 func NewWebSocketServer(addr string) *WebSocketServer {
@@ -102,6 +107,41 @@ func (s *WebSocketServer) Start() error {
 	corsHandler := cors.Default().Handler(mux)
 	if s.webRTCInstance == nil {
 		s.webRTCInstance = webrtcServer.NewWebRTCManager()
+	}
+	if s.redisInstance == nil {
+		/*
+			REDIS_URL="redis-12514.c325.us-east-1-4.ec2.cloud.redislabs.com";
+			REDIS_PASSWORD="BrQeukKTKH8g3lwqJXGTZS04zujoMvUc"
+		*/
+		redisurl := os.Getenv("REDIS_URL")
+		redispassword := os.Getenv("REDIS_PASSWORD")
+		cache.InitializeRedisClient("chatCache", redisurl, redispassword, 0)
+		// Use the Redis client.
+		ctx := context.Background()
+		//pong, err := s.redisInstance.Ping(ctx).Result()
+		//fmt.Println("ping pong")
+		//fmt.Println(pong, err)
+		//fmt.Println("ping pong")
+		// Set a value in Redis
+		redisClient, ok := cache.GetRedisClient("chatCache")
+		if ok {
+			// Handle error or fallback logic if the Redis client instance is not found
+			s.redisInstance = redisClient
+		} else {
+			fmt.Println("Error getting Redis")
+		}
+
+		err := s.redisInstance.Client.Set(ctx, "myKey", "Hello Redis!", 0).Err()
+		if err != nil {
+			fmt.Println("Error setting value:", err)
+		}
+		// Get the value from Redis
+
+		value, err := s.redisInstance.Client.Get(ctx, "myKey").Result()
+		if err != nil {
+			fmt.Println("Error getting value:", err)
+		}
+		fmt.Println("Retrieved value:", value)
 	}
 	return http.ListenAndServe(s.addr, corsHandler)
 }
@@ -343,6 +383,15 @@ func getCurrentTime() string {
 	return currentTime.Format("2006-01-02 15:04:05")
 }
 func (s *WebSocketServer) sendMessageToClient(threadSafeWriter *roomModel.ThreadSafeWriter, messageObject *roomModel.IFWebsocketMessage, SelectedConnectionId string) error {
+	//wirte to redis cache
+	ctx := context.Background()
+	if messageObject.MessageType == TextMessage {
+		if s.redisInstance.AddMessageToRedisStream(ctx, messageObject) != nil {
+			fmt.Println("Failed To Add Message To Redis Stream")
+		}
+	}
+
+	//wirte to redis cache
 	threadSafeWriter.Lock()
 	defer threadSafeWriter.Unlock()
 	messageObject.ConnectionID = SelectedConnectionId
